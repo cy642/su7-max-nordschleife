@@ -14,6 +14,40 @@ header{position:absolute;z-index:5;left:3.4%;right:3.4%;top:max(22px,env(safe-ar
 @media(max-height:680px) and (min-aspect-ratio:1/1){header{top:12px;height:32px}.garageInfo{top:15%;left:4.5%}.make{font-size:17px;margin-top:12px}.model{font-size:56px;margin-bottom:7px}.stats{margin-top:14px;padding-top:9px}.setup{margin-top:16px}.garageFoot{bottom:14px}.hudTop{top:51px}.mapbox{width:146px}#mini{height:66px}.hudTop .panel{padding:4px 11px}}
 @media(max-height:500px) and (min-aspect-ratio:1/1){.garageInfo{top:16%;width:38%}.garageInfo .eyebrow,.make,.stats label,.setup>label,.garageFoot .trackTag{display:none}.model{font-size:45px}.stats{padding-top:7px;margin-top:8px}.stats b{font-size:18px}.setup{margin-top:11px}.go{padding:8px 12px}.garageFoot{justify-content:end}.mapbox{width:112px;bottom:75px!important;padding:4px 7px}#mini{height:44px}.telemetry{bottom:72px!important}.speed{font-size:43px}.power{margin:4px 0}.small{padding:6px 9px}.panel b{font-size:18px}.speedunit{font-size:10px}.touch button{height:47px}.hudTop{top:45px}}
 @media(max-aspect-ratio:1/1){header{left:4%;right:4%;top:14px}.brand{font-size:13px}.appName,.divider{display:none}.shade{background:linear-gradient(0deg,#0c1f29 1%,#0c1f29ed 24%,transparent 58%),linear-gradient(180deg,#11252daa,transparent 24%)}.garageInfo{top:auto;bottom:14%;left:6%;width:88%;max-width:none;display:grid;grid-template-columns:1fr 1fr;align-items:end}.garageInfo .eyebrow{grid-column:1/-1}.make{font-size:16px;grid-column:1;margin-top:10px}.model{font-size:52px;grid-column:1;grid-row:3;margin-bottom:4px}.color{grid-column:1;grid-row:4;font-size:12px}.color span:last-child{display:none}.stats{grid-column:2;grid-row:2/5;gap:7px;justify-content:space-between;margin:0 0 2px;padding:8px 0}.stats b{font-size:17px}.stats label{font-size:9px}.setup{grid-column:1/-1;max-width:none;margin-top:19px}.garageFoot{bottom:3.7%;left:6%;right:6%}.trackTag strong{font-size:13px}.trackTag .micro{font-size:8px}.dragHint{display:none}.hudTop{left:4%;top:64px}.panel{padding:6px 10px}.panel b{font-size:19px}.telemetry{right:4%;bottom:100px}.mapbox{width:128px;bottom:100px;padding:6px 8px}#mini{height:60px}.mapbox strong{font-size:11px}.touch button{min-width:46px}.small{padding:7px 9px;font-size:11px}.alert{bottom:30%}}
+@media (orientation:landscape) {
+ .touch-device #app{--left:max(18px,env(safe-area-inset-left));--right:max(18px,env(safe-area-inset-right));--top:max(7px,env(safe-area-inset-top));--bottom:max(12px,env(safe-area-inset-bottom));touch-action:none;user-select:none;-webkit-user-select:none}
+ .touch-device header{left:var(--left);right:var(--right);top:var(--top);height:44px;pointer-events:none}
+ .touch-device .tools,.touch-device .touch button{pointer-events:auto}
+ .touch-device .small,.touch-device .seg,.touch-device .go{min-height:44px}
+ .touch-device .garageInfo{left:var(--left);top:max(55px,17%);width:min(37%,330px)}
+ .touch-device .garageFoot{right:var(--right);bottom:var(--bottom)}
+ .touch-device .dragHint{display:none}
+ .touch-device .racing header>.mark,.touch-device .racing header>.brand,.touch-device .racing header>.divider,.touch-device .racing header>.appName,.touch-device .racing #help{display:none}
+ .touch-device .hudTop{left:var(--left);top:var(--top)}
+ .touch-device .hudTop .panel{padding:5px 9px}
+ .touch-device .hudTop small{font-size:9px}
+ .touch-device .hudTop b{font-size:17px}
+ .touch-device .touch{display:flex;left:var(--left);right:var(--right);bottom:var(--bottom);align-items:end}
+ .touch-device .touch div{gap:clamp(6px,1.3vw,16px);align-items:end}
+ .touch-device .touch button{width:clamp(60px,9vw,98px);height:clamp(56px,16vh,88px);border-radius:15px;background:#10252fc4;font-size:19px;box-shadow:inset 0 1px 0 #ffffff21}
+ .touch-device .touch [data-key=brake]{height:clamp(54px,15vh,74px);color:#ffd4c2;border-bottom:3px solid #ffad89}
+ .touch-device .touch .throttle{height:clamp(62px,19vh,98px);border-color:#7af3e4;background:#165e60db;color:#d7fff9;border-bottom:3px solid #77f0df}
+ .touch-device .touch button.down{background:#a2e8e1;color:#102b32;transform:translateY(2px)}
+ .touch-device .racing .telemetry{position:absolute;inset:0!important;pointer-events:none;text-align:center}
+ .touch-device .telemetry .speed{position:absolute;bottom:calc(var(--bottom) + 17px);left:50%;transform:translateX(-50%);font-size:clamp(30px,9vh,54px)}
+ .touch-device .speedunit{position:absolute;left:50%;bottom:calc(var(--bottom) + 5px);transform:translateX(-50%);font-size:9px}
+ .touch-device .power{position:absolute;left:50%;bottom:var(--bottom);transform:translateX(-50%);width:65px;margin:0;height:2px}
+ .touch-device .hudActions{position:absolute;top:calc(var(--top) + 49px);right:var(--right);gap:5px}
+ .touch-device .hudActions .small{padding:4px 9px;background:#0d2029ae}
+ .touch-device .racing .mapbox{top:calc(var(--top) + 47px);left:var(--left);bottom:auto!important;width:98px;padding:3px 6px}
+ .touch-device #mini{height:41px}.touch-device .mapbox strong{font-size:10px}.touch-device .mapbox .micro{display:none}
+ .touch-device .alert{bottom:auto;top:22%;font-size:11px}.touch-device .count{top:31%}
+ .touch-device .dialog{max-height:calc(100dvh - 12px);padding:14px 18px}.touch-device .dialog h2{font-size:22px;margin:0 0 6px}
+}
+@media (orientation:landscape) and (max-height:360px) {
+ .touch-device .garageInfo{top:54px}.touch-device .garageInfo .stats{display:none}
+ .touch-device .racing .mapbox{width:84px}.touch-device #mini{height:30px}
+}
 </style></head><body><main id="app">
 <canvas id="view" aria-label="三维赛车画面"></canvas>
 <div class="shade" id="shade"></div>

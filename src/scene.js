@@ -339,6 +339,14 @@ function buildTrack(scene,asphalt,grassMap,treePhotos){
  return sprintFinish;
 }
 const postMaterial=lam(0x7d8580),postGeometry=new T.BoxGeometry(1,1,1);
+const brakingCorners=[570,1510,4260,5680,7350,8380,9980,13110,15740,18480];
+const brakeBoards=brakingCorners.flatMap(corner=>[100,50].map(before=>({
+  s:corner-before,lane:-(Math.sign(curvature(corner,28))||1)*8.2,before,
+  width:.64,length:.055
+})));
+export const trackPosts=[...brakeBoards,...[0,3200].flatMap(s=>[-7,7].map(lane=>({
+  s,lane,sprintOnly:s===3200,width:.15,length:.19
+})))];
 function circuitFurniture(scene){
  const fenceTex=texture(64,64,(ctx)=>{
    ctx.strokeStyle='#a0a6a4';ctx.lineWidth=3.6;ctx.beginPath();
@@ -358,14 +366,11 @@ function circuitFurniture(scene){
    scene.add(new T.Mesh(g,fenceMat));makeInstances(scene,posts,postGeometry,poleMat,false);
  }
  // Braking markers face approaching traffic at selected corners.
- for(const corner of [570,1510,4260,5680,7350,8380,9980,13110,15740,18480]){
-   const sign=Math.sign(curvature(corner,28))||1;
-   for(const before of [100,50]){
-     const g=new T.Group();place(g,corner-before,-sign*8.2);scene.add(g);
+ for(const {s,lane,before} of brakeBoards){
+     const g=new T.Group();place(g,s,lane);scene.add(g);
      box(g,.055,.95,.065,poleMat,0,.4,0);
      const m=new T.Mesh(new T.PlaneGeometry(1.25,.62),nameplate(String(before),'#e6e5d9','#202625'));
      m.position.y=1.12;m.rotation.y=Math.PI;g.add(m);
-   }
  }
  const cabin=new T.Group();place(cabin,-15,17.8);cabin.rotation.x=0;scene.add(cabin);
  const concrete=lam(0xa2a099),slate=lam(0x3d474a),window=new T.MeshStandardMaterial({color:0x314a58,metalness:.58,roughness:.27});
