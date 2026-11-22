@@ -1,0 +1,7 @@
+{
+  "name":"su7-max-nordschleife",
+  "private":true,
+  "scripts":{"build":"node build.cjs"},
+  "dependencies":{"three":"0.164.1"},
+  "devDependencies":{"esbuild":"0.25.12"}
+}

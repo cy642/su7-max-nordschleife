@@ -1,0 +1,12 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const esbuild = require('esbuild');
+const root = __dirname;
+const src = path.join(root, 'src');
+const encodedCar = fs.readFileSync(path.join(src,'su7.glb')).toString('base64');
+fs.writeFileSync(path.join(src, 'model-data.js'), 'export default "' + encodedCar + '";');
+const build = esbuild.buildSync({entryPoints:[path.join(src,'game.js')], bundle:true, minify:true, write:false, format:'iife', target:'es2022', legalComments:'inline'});
+const script = build.outputFiles[0].text.replace(/<\/script/gi,'<\\/script');
+const shell = fs.readFileSync(path.join(src, 'shell.html'),'utf8').replace('__BUNDLE__',()=>script);
+const notice = fs.readFileSync(path.join(root,'node_modules/three/LICENSE'),'utf8');
+fs.writeFileSync(path.join(root,'index.html'), shell.replace('</body>',()=>'<script type="text/plain" id="three-license">'+notice+'</script></body>'));
