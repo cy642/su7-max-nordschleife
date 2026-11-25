@@ -2,7 +2,7 @@
 
 [打开游戏](https://cy642.github.io/su7-max-nordschleife/)
 
-[下载安卓横屏版 APK](https://github.com/cy642/su7-max-nordschleife/releases/download/android-v1.6.0/Nordrun-1.6.0.apk)
+[下载安卓横屏版 APK](https://github.com/cy642/su7-max-nordschleife/releases/download/android-v1.6.1/Nordrun-1.6.1.apk)
 
 **安卓更新**　1.5.0 及更早版本需要先下载一次上方的 APK，直接覆盖安装。自 1.6.0 起，打开或返回游戏会定期检查正式版，有新版本时车库右下角会显示「更新到 …」。也可随时点「检查更新」，查看版本说明后下载，并在安卓安装界面点「更新」。首次从游戏内安装时，按手机提示允许「北环竞速」安装应用，再返回继续。覆盖安装会保留原有车型选择、赛道和成绩。
 

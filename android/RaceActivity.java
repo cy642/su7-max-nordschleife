@@ -97,10 +97,6 @@ public final class RaceActivity extends Activity {
         super.onSaveInstanceState(state);
         updates.saveState(state);
     }
-    @Override protected void onActivityResult(int request, int result, Intent data) {
-        super.onActivityResult(request, result, data);
-        updates.activityResult(request, result);
-    }
     @Override protected void onDestroy() {
         updates.destroy(); game.destroy(); super.onDestroy();
     }

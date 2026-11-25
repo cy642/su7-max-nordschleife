@@ -24,7 +24,6 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 final class UpdateController {
-    private static final int INSTALL_REQUEST = 8102;
     private static final long CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L;
     private static final long RETRY_INTERVAL_MS = 15 * 60 * 1000L;
 
@@ -261,27 +260,20 @@ final class UpdateController {
 
     private void install(ReleaseSource.Release release, File file) {
         Uri uri = UpdateFileProvider.uriFor(app, file);
-        Intent intent = new Intent(Intent.ACTION_INSTALL_PACKAGE, uri);
+        Intent intent = new Intent(Intent.ACTION_VIEW);
+        intent.setDataAndType(uri, UpdateFileProvider.MIME);
         intent.setClipData(ClipData.newRawUri("游戏更新", uri));
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        intent.putExtra(Intent.EXTRA_RETURN_RESULT, true);
+        // Updating replaces this process. Keep the installer off the game's task stack.
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
         try {
-            activity.startActivityForResult(intent, INSTALL_REQUEST);
+            activity.startActivity(intent);
         } catch (ActivityNotFoundException | SecurityException e) {
             error("无法打开系统安装器", e, () -> prepare(release));
         }
     }
 
-    void activityResult(int request, int result) {
-        if (request == INSTALL_REQUEST && result == Activity.RESULT_FIRST_USER) {
-            showWhenVisible(() -> error("系统安装失败",
-                    new Exception("请确认设备有足够空间后重试。"), () -> check(true)));
-        }
-    }
-
     private void error(String title, Exception cause, Runnable retry) {
-        String detail = cause instanceof java.io.IOException || cause.getClass() == Exception.class
-                ? cause.getLocalizedMessage() : null;
+        String detail = cause instanceof java.io.IOException ? cause.getLocalizedMessage() : null;
         if (cause instanceof java.net.SocketException || cause instanceof java.net.UnknownHostException ||
                 cause instanceof java.net.SocketTimeoutException || cause instanceof javax.net.ssl.SSLException) {
             detail = "暂时连接不上更新服务，请检查网络后再试。";
