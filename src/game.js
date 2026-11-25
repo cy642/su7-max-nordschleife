@@ -1,3 +1,4 @@
+import {checkpointPlan,speedTraps,crossingFraction,eliminationRounds,recordEliminationCrossings,cutOrder} from './challenges.mjs';
 import * as T from 'three';
 import {carModel,setupStage,sample,curvature,section,place,LENGTH,STEP,mapPoints,trackPosts} from './scene.js';
 import {createContacts,footprint} from './contact.mjs';
@@ -43,6 +44,17 @@ const paceSettings={
 };
 let eventType='race',difficulty='sport',sector='carousel',startDistance=0;
 let splits=[],previousSplits=[];
+const challengeBriefs={
+ checkpoint:'在倒计时归零前过门，每过一门补时，撑到终点。',
+ elimination:'两道淘汰线各淘汰末两名，最后两车争冠。',
+ speedtrap:'冲过三道测速门，挑战更高的三门平均速度。'
+};
+const hasRivals=()=>eventType==='race'||eventType==='elimination';
+let gates=[],gateIndex=0,deadline=0,bonus=0,radarSpeeds=[],rounds=[];
+function nextGate(){
+ if(eventType==='elimination')return rounds.find((round,i)=>i>=gateIndex&&!round.passed.has(player))?.line??total;
+ return gates[gateIndex]??total;
+}
 const carPool=[];
 function timeString(t){
  const ticks=Math.round(t*100);
@@ -102,10 +114,11 @@ bind('garageWing',changeWing);bind('raceWing',changeWing);
 bind('camera',()=>{viewMode=(viewMode+1)%4;camFresh=true;announce(['追尾视角','远追视角','引擎盖视角','驾驶席视角'][viewMode],1.2);});
 function updateGarage(){
  buttons.forEach(b=>{const active=mode===b.dataset.mode;b.classList.toggle('on',active);b.setAttribute('aria-pressed',String(active));});
- $('difficultyField').hidden=eventType!=='race';
+ $('difficultyField').hidden=!hasRivals();
+ const brief=challengeBriefs[eventType];$('challengeBrief').hidden=!brief;$('challengeBrief').textContent=brief||'';
  $('courses').hidden=eventType==='practice';$('sectorField').hidden=eventType!=='practice';
- $('eventNote').textContent={race:'德国 · 纽博格林北环 / 6 车竞速',time:'单人计时 / 三段计时点',practice:'指定路段 / 单人练习'}[eventType];
- if(ready)$('startLabel').textContent={race:'开始比赛',time:'开始计时',practice:'练习这段弯道'}[eventType];
+ $('eventNote').textContent={race:'德国 · 纽博格林北环 / 6 车竞速',time:'单人计时 / 三段计时点',practice:'指定路段 / 单人练习',checkpoint:'限时闯关',elimination:'六车发车 / 两车决胜',speedtrap:'测速挑战'}[eventType];
+ if(ready)$('startLabel').textContent={race:'开始比赛',time:'开始计时',practice:'练习这段弯道',checkpoint:'开始闯关',elimination:'开始淘汰赛',speedtrap:'开始测速'}[eventType];
 }
 buttons.forEach(b=>b.onclick=()=>{mode=b.dataset.mode;updateGarage();});
 $('event').onchange=e=>{eventType=e.target.value;updateGarage();};
@@ -173,41 +186,95 @@ function garage(){closeDialog();resetKeys();state='garage';toggleShell(false);st
 function startRace(){
  if(!ready)return;closeDialog();resetKeys();toggleShell(true);const route=eventType==='practice'?practiceRoutes[sector]:{start:0,end:distances[mode]};
  startDistance=route.start;total=route.end;splits=[];previousSplits=[];
+ gateIndex=0;deadline=0;bonus=0;radarSpeeds=[];rounds=[];gates=[];
+ if(eventType==='checkpoint'){
+   const plan=checkpointPlan(total);gates=plan.gates;deadline=plan.allowance;bonus=plan.bonus;
+ }else if(eventType==='speedtrap')gates=speedTraps(total);
+ else if(eventType==='elimination'){rounds=eliminationRounds(total);gates=rounds.map(r=>r.line);}
+ moveChallengeMarker();
  if(eventType==='time'){try{const saved=JSON.parse(localStorage.getItem(bestKey()+'.splits'));if(Array.isArray(saved)&&saved.length===3&&saved.every(Number.isFinite))previousSplits=saved;}catch{}}
  rivals.length=0;
- for(const car of carPool){car.object.visible=eventType==='race';if(car.object.visible)rivals.push(car);}
+ for(const car of carPool){car.object.visible=hasRivals();if(car.object.visible)rivals.push(car);}
  state='countdown';remaining=3;elapsed=0;viewMode=0;alertLife=0;wasOff=false;
- Object.assign(player,{s:eventType==='race'?-42:startDistance,lane:eventType==='race'?2.25:0,v:0,gear:1,reverseHold:0,h:0,steer:0,roll:0,pitch:0,yawRate:0,slip:0,finish:null,contact:0});stage.world.add(carRoot);stage.sprintFinish.visible=total<LENGTH;
+ Object.assign(player,{s:hasRivals()?-42:startDistance,lane:hasRivals()?2.25:0,v:0,gear:1,reverseHold:0,h:0,steer:0,roll:0,pitch:0,yawRate:0,slip:0,finish:null,contact:0});stage.world.add(carRoot);stage.sprintFinish.visible=total<LENGTH;
  if(stage.sprintFinish.visible)place(stage.sprintFinish,total,0);
  const posts=trackPosts.map(post=>post.sprintOnly?{...post,s:total}:post);
  resolveContacts=createContacts(sample,STEP,LENGTH,posts);simAcc=0;
- rivals.forEach((r,i)=>Object.assign(r,{s:-(i+1)*7,lane:i%2?2.25:-2.25,targetLane:i%2?2.25:-2.25,v:0,slip:0,h:0,finish:null}));
+ rivals.forEach((r,i)=>Object.assign(r,{grid:i,s:-(i+1)*7,lane:i%2?2.25:-2.25,targetLane:i%2?2.25:-2.25,v:0,slip:0,h:0,finish:null}));
  for(const car of [player,...rivals])remember(car);
  camFresh=true;eye.clearViewOffset();eye.updateProjectionMatrix();rafTime=0;uiTick=1;showWing();beep();updateHUD();renderFrame(0,1);
 }
 bind('startBtn',startRace);
 function announce(text,life=1){alertText=text;alertLife=life;}
-const bestKey=()=>['nordrun.su7.v3',eventType,eventType==='practice'?sector:mode,eventType==='race'?difficulty:'solo'].join('.');
+const bestKey=()=>['nordrun.su7.v3',eventType,eventType==='practice'?sector:mode,hasRivals()?difficulty:'solo'].join('.');
 function best(){try{return parseFloat(localStorage.getItem(bestKey()))||0;}catch{return 0;}}
 function rank(){
  if(player.finish!==null)return 1+rivals.filter(r=>r.finish!==null&&r.finish<=player.finish).length;
  return 1+rivals.filter(r=>r.finish!==null||r.s>player.s).length;
 }
 function crossingTime(car,line,dt){
- const fraction=clamp((line-car.previous.s)/Math.max(.0001,car.s-car.previous.s),0,1);
+ const fraction=crossingFraction(car,line);
  return elapsed-(1-fraction)*dt;
 }
+const resultRow=(label,value)=>'<div>'+label+'<b>'+value+'</b></div>';
+function resultDialog(title,rows){
+ state='finished';updateHUD();
+ dialog(title,'<div class="rows">'+rows.join('')+'</div>',[['再跑一次',startRace],['返回车库',garage]]);
+}
 function finish(){
- player.finish=elapsed;const pos=rank(),old=best();state='finished';inputs.gas=false;
- if(!old||elapsed<old){try{localStorage.setItem(bestKey(),String(elapsed));if(eventType==='time')localStorage.setItem(bestKey()+'.splits',JSON.stringify(splits));}catch{}}
- updateHUD();
- const title=eventType==='race'?'冲线！第 '+pos+' 名':eventType==='practice'?'练习段完成':'计时完成';
- const sectors=eventType==='time'?splits.map((t,i)=>'<div>第 '+(i+1)+' 段<b>'+timeString(t-(splits[i-1]||0))+'</b></div>').join(''):'';
- dialog(title,'<div class="rows"><div>赛程<b>'+((total-startDistance)/1000).toFixed(3)+' KM</b></div>'+sectors+'<div>本次用时<b>'+timeString(elapsed)+'</b></div><div>个人最佳<b>'+timeString(Math.min(old||elapsed,elapsed))+'</b></div></div>',[['再跑一次',startRace],['返回车库',garage]]);
+ player.finish=elapsed;
+ const old=best(),isRadar=eventType==='speedtrap';
+ const score=isRadar?radarSpeeds.reduce((sum,v)=>sum+v,0)/radarSpeeds.length:elapsed;
+ const improved=!old||(isRadar?score>old:score<old);
+ if(improved){try{localStorage.setItem(bestKey(),String(score));if(eventType==='time')localStorage.setItem(bestKey()+'.splits',JSON.stringify(splits));}catch{}}
+ const rows=[resultRow('赛程',((total-startDistance)/1000).toFixed(3)+' KM')];
+ if(eventType==='time')splits.forEach((t,i)=>rows.push(resultRow('第 '+(i+1)+' 段',timeString(t-(splits[i-1]||0)))));
+ if(isRadar){
+   radarSpeeds.forEach((v,i)=>rows.push(resultRow('测速门 '+(i+1),v.toFixed(1)+' km/h')));
+   rows.push(resultRow('三门均速',score.toFixed(1)+' km/h'),resultRow('个人最高',(improved?score:old).toFixed(1)+' km/h'));
+ }else{
+   if(eventType==='checkpoint')rows.push(resultRow('剩余时间',timeString(Math.max(0,deadline-elapsed))));
+   rows.push(resultRow('本次用时',timeString(elapsed)),resultRow('个人最佳',timeString(improved?score:old)));
+ }
+ const titles={time:'计时完成',practice:'练习段完成',checkpoint:'限时闯关成功',speedtrap:'测速挑战完成'};
+ resultDialog(hasRivals()?'冲线！第 '+rank()+' 名':titles[eventType],rows);
+}
+function advanceChallenge(dt){
+ if(eventType==='elimination'&&gateIndex<rounds.length){
+   const field=[player,...rivals];
+   const previousTarget=nextGate();
+   recordEliminationCrossings(rounds,field,elapsed,dt);
+   if(nextGate()!==previousTarget)moveChallengeMarker();
+   const round=rounds[gateIndex],order=cutOrder(round,field);
+   if(!order)return;
+   const out=order.slice(round.qualifiers);
+   if(out.includes(player)){
+     resultDialog('在淘汰线止步',[resultRow('名次','第 '+(order.indexOf(player)+1)+' 名'),resultRow('淘汰线',(round.line/1000).toFixed(2)+' KM')]);return;
+   }
+   for(const car of out){car.object.visible=false;rivals.splice(rivals.indexOf(car),1);}
+   gateIndex++;moveChallengeMarker();announce(gateIndex===2?'进入决赛　两车争冠':'晋级　场上剩余四车',2.0);beep(true);
+ }else if(eventType==='checkpoint'){
+   const line=nextGate();
+   const crossed=player.previous.s<line&&player.s>=line;
+   if((crossed?crossingTime(player,line,dt):elapsed)>deadline){
+     elapsed=deadline;
+     resultDialog('时间耗尽',[resultRow('通过计时门',gateIndex+' / '+gates.length),resultRow('距下一目标',Math.ceil(Math.max(0,line-player.s))+' m')]);return;
+   }
+   if(crossed&&gateIndex<gates.length){
+     gateIndex++;deadline+=bonus;moveChallengeMarker();announce('通过计时门　+'+bonus.toFixed(1)+' 秒',1.8);beep(true);
+   }
+ }else if(eventType==='speedtrap'&&gateIndex<gates.length){
+   const line=gates[gateIndex];
+   if(player.previous.s<line&&player.s>=line){
+     const speed=lerp(player.previous.v,player.v,crossingFraction(player,line))*3.6;
+     radarSpeeds.push(speed);gateIndex++;moveChallengeMarker();announce('测速 '+gateIndex+' / 3　'+speed.toFixed(1)+' km/h',2.1);beep(true);
+   }
+ }
 }
 function aiStep(dt){
  const pace=paceSettings[difficulty];
- rivals.forEach((r,i)=>{
+ rivals.forEach(r=>{
+  const i=r.grid;
   if(r.finish!==null){r.s+=dt*r.v;r.v=Math.max(0,r.v-1.7*dt);return;}
   const ahead=[...rivals,player].filter(x=>x!==r&&x.s>r.s&&x.s-r.s<30&&Math.abs(x.lane-r.lane)<2.35).sort((a,b)=>a.s-b.s)[0];
   const bend=curvature(r.s+15,17),anticipated=Math.max(Math.abs(bend),Math.abs(curvature(r.s+r.v*1.12,24)),Math.abs(curvature(r.s+r.v*1.85,18)));
@@ -244,15 +311,26 @@ function step(dt){
      if(splits.length<3)announce('计时点 '+splits.length+' / 3　'+(reference===undefined?timeString(stamp):((stamp>=reference?'+':'−')+Math.abs(stamp-reference).toFixed(2)+' 秒')),2.4);
    }
  }
+ advanceChallenge(dt);
+ if(state==='finished')return;
  if(p.s>=total){elapsed=crossingTime(p,total,dt);finish();}
 }
 let minX=Infinity,minZ=Infinity,maxX=-Infinity,maxZ=-Infinity;
 for(const [x,z] of mapPoints){minX=Math.min(x,minX);maxX=Math.max(x,maxX);minZ=Math.min(z,minZ);maxZ=Math.max(z,maxZ);}
+function moveChallengeMarker(){
+ const marker=stage.challengeMarker;
+ marker.visible=nextGate()<total;
+ if(marker.visible){
+   marker.userData.ink.color.setHex(eventType==='speedtrap'?0xffc65f:eventType==='elimination'?0xff815e:0x58f3cb);
+   place(marker,nextGate(),0);
+ }
+}
 function drawMap(){
  const c=$('mini').getContext('2d'),w=c.canvas.width,h=c.canvas.height,k=Math.min((w-20)/(maxX-minX),(h-12)/(maxZ-minZ));
  const pt=(x,z)=>[(x-(minX+maxX)/2)*k+w/2,(z-(minZ+maxZ)/2)*k+h/2];c.clearRect(0,0,w,h);c.lineJoin='round';
  c.beginPath();mapPoints.forEach(([x,z],i)=>{const p=pt(x,z);if(i)c.lineTo(...p);else c.moveTo(...p);});c.closePath();c.strokeStyle='#789196';c.lineWidth=2.7;c.stroke();
  if(total-startDistance<LENGTH){c.beginPath();for(let s=startDistance;s<total+28;s+=28){const p=sample(Math.min(s,total)),v=pt(p.x,p.z);if(s>startDistance)c.lineTo(...v);else c.moveTo(...v);}c.strokeStyle='#74e2d9';c.lineWidth=4;c.stroke();}
+ if(nextGate()<total){const g=sample(nextGate()),[x,y]=pt(g.x,g.z);c.strokeStyle='#ffdc81';c.lineWidth=2;c.strokeRect(x-4,y-4,8,8);}
  for(const r of [...rivals,player]){const p=sample(r.s),pos=pt(p.x,p.z);c.beginPath();c.arc(...pos,r===player?5.5:3.4,0,2*Math.PI);c.fillStyle=r===player?'#80fff2':'#f7ab72';c.fill();if(r===player){c.strokeStyle='#103b46';c.lineWidth=2;c.stroke();}}
 }
 function cornerHint(){
@@ -268,8 +346,16 @@ function cornerHint(){
  return '';
 }
 function updateHUD(){
- $('metricLabel').textContent=eventType==='race'?'排名 / POS':eventType==='time'?'计时点 / SPLIT':'练习 / SECTOR';
- $('position').textContent=eventType==='race'?rank()+'/6':eventType==='time'?Math.min(splits.length+1,3)+'/3':Math.round(clamp((player.s-startDistance)/(total-startDistance),0,1)*100)+'%';$('clock').textContent=timeString(elapsed);$('remain').textContent=(Math.max(0,total-Math.max(startDistance,player.s))/1000).toFixed(2);
+ const challenge=Object.hasOwn(challengeBriefs,eventType),timed=eventType==='checkpoint';
+ const count=eventType==='time'?Math.min(splits.length+1,3)+'/3':gateIndex+'/'+gates.length;
+ $('metricLabel').textContent=hasRivals()?'排名 / POS':eventType==='practice'?'练习 / SECTOR':eventType==='speedtrap'?'测速门':'计时点';
+ $('position').textContent=hasRivals()?rank()+'/'+(rivals.length+1):eventType==='practice'?Math.round(clamp((player.s-startDistance)/(total-startDistance),0,1)*100)+'%':count;
+ const radar=eventType==='speedtrap';
+ $('clockLabel').textContent=timed?'倒计时 / TIME':radar?'均速 / KM/H':'用时 / TIME';$('clock').classList.toggle('urgent',timed&&deadline-elapsed<=8);
+ $('clock').textContent=radar?(radarSpeeds.length?(radarSpeeds.reduce((a,b)=>a+b,0)/radarSpeeds.length).toFixed(1):'—'):timeString(timed?Math.max(0,deadline-elapsed):elapsed);
+ const next=challenge&&nextGate()<total;
+ $('distanceLabel').textContent=next?(eventType==='elimination'?'淘汰线 / KM':eventType==='speedtrap'?'测速门 / KM':'下道门 / KM'):'终点 / KM';
+ $('remain').textContent=(Math.max(0,(next?nextGate():total)-Math.max(startDistance,player.s))/1000).toFixed(2);
  const braking=brakeLights(),reverse=player.gear===-1;
  $('gear').textContent=reverse?'R':'D';$('gear').classList.toggle('reverse',reverse);
  $('speed').textContent=Math.round(Math.abs(player.v)*3.6);$('power').style.width=(braking?100:tractionInput()?clamp(100-Math.abs(player.v)*.48,35,100):9)+'%';$('power').style.background=braking?'#ff956d':'var(--aqua)';
@@ -296,7 +382,14 @@ function renderFrame(dt,alpha=1){
   renderer.render(stage.garage,eye);return;
  }
  const road=place(carRoot,car.s,car.lane,.018,car.h);
- for(const r of rivals){const ai=present(r,alpha);place(r.object,ai.s,ai.lane,.016,ai.h);r.object.visible=r.object.position.distanceToSquared(carRoot.position)<700*700;}
+ for(const r of rivals){
+   const ai=present(r,alpha);place(r.object,ai.s,ai.lane,.016,ai.h);
+   r.object.visible=r.object.position.distanceToSquared(carRoot.position)<700*700;
+   if(r.object.visible){
+     const deployment=T.MathUtils.smoothstep(ai.v,24,39);
+     for(const level of r.object.levels)level.object.userData.setWing(deployment);
+   }
+ }
  const camDistance=viewMode===1?10.5:6.9;
  const rear=sample(car.s-8),lead=sample(car.s+13+car.v*.085);
  const heading=Math.atan2(lead.x-rear.x,lead.z-rear.z)-car.h*(viewMode===2?.55:.16);
@@ -405,7 +498,7 @@ async function boot(){
    stage.world.add(object);
    carPool.push({name:carNames[i],object,home:(i%2?1:-1)*(1.5+.22*i)});
  }
- applyGraphics();stage.garage.add(carRoot);ready=true;$('startBtn').disabled=false;$('startLabel').textContent='开始比赛';showWing();garage();frame(performance.now());
- if(location.search.includes('qa=1'))window.__qa={state:()=>({state,s:player.s,lane:player.lane,heading:player.h,speed:player.v,gear:player.gear??1,wing,wingOpen,rank:rank(),total,elapsed,eventType,difficulty,sector,startDistance,splits:[...splits],rivals:rivals.map(r=>({s:r.s,v:r.v,finish:r.finish})),viewMode}),advance:(seconds)=>{for(let i=0;i<seconds/PHYSICS_DT;i++)step(PHYSICS_DT);updateHUD();},info:()=>renderer.info.render,render:()=>renderFrame(1/60)};
+ applyGraphics();stage.garage.add(carRoot);ready=true;$('startBtn').disabled=false;updateGarage();showWing();garage();frame(performance.now());
+ if(location.search.includes('qa=1'))window.__qa={state:()=>({state,s:player.s,lane:player.lane,heading:player.h,speed:player.v,gear:player.gear??1,wing,wingOpen,rank:rank(),total,elapsed,eventType,difficulty,sector,startDistance,gateIndex,gates:[...gates],deadline,radarSpeeds:[...radarSpeeds],splits:[...splits],rivals:rivals.map(r=>({s:r.s,v:r.v,finish:r.finish})),viewMode}),advance:(seconds)=>{for(let i=0;i<seconds/PHYSICS_DT;i++)step(PHYSICS_DT);updateHUD();},info:()=>renderer.info.render,render:()=>renderFrame(1/60)};
 }
 boot().catch(e=>{console.error(e);$('error').hidden=false;$('error').innerHTML='<p>三维画面未能启动。请用支持 WebGL 的新版 Chrome、Edge 或 Safari 打开，并启用图形加速。</p><button class="small" onclick="location.reload()">重新载入</button>';});

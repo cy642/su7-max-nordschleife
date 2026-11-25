@@ -32,59 +32,69 @@ function softShadow(w,l){
  const tex=texture(128,128,c=>{const grad=c.createRadialGradient(64,64,3,64,64,64);grad.addColorStop(0,'rgba(0,0,0,.84)');grad.addColorStop(.52,'rgba(0,0,0,.63)');grad.addColorStop(1,'rgba(0,0,0,0)');c.fillStyle=grad;c.fillRect(0,0,128,128);});
  const m=new T.Mesh(new T.PlaneGeometry(w,l),new T.MeshBasicMaterial({map:tex,transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-3}));m.rotation.x=-Math.PI/2;m.position.y=.026;return m;
 }
-// The supplied rear kit includes a separate curved insert at the foot of the back
-// window. Detach its exact faces before batching the rest of the black rear trim.
-function detachDeckPanel(source, geom) {
- const local=source.attributes.position, world=geom.attributes.position, normals=geom.attributes.normal;
- const fixed=[], faces=[], positions=[], directions=[], ids=new Map(), index=geom.index.array;
- for(let i=0;i<index.length;i+=3){
-   const id=index[i],x=local.getX(id),y=local.getY(id),z=local.getZ(id);
-   if(Math.abs(x)>.55||y<.91||y>.98||z< -2.11||z> -1.90){fixed.push(id,index[i+1],index[i+2]);continue;}
-   for(const id of index.subarray(i,i+3)){
-     if(!ids.has(id)){
-       ids.set(id,positions.length/3);
-       positions.push(world.getX(id),world.getY(id),world.getZ(id));
-       directions.push(normals.getX(id),normals.getY(id),normals.getZ(id));
+// These are the two complete, separately indexed shells of the factory wing in
+// the 2024 GLB's painted rear kit (mesh 38). The moulded well and the dark
+// trim at the foot of the rear glass are separate, stationary components.
+function detachWing(geometry) {
+ const indices=geometry.index.array,body=[],faces=[],positions=[],normals=[],remap=new Map();
+ const position=geometry.getAttribute('position'),normal=geometry.getAttribute('normal');
+ const point=new T.Vector3();
+ for(let offset=0;offset<indices.length;offset+=3){
+   const face=offset/3;
+   const underside=face>=130&&face<=321,skin=face>=9271&&face<=9680;
+   if(!underside&&!skin){body.push(indices[offset],indices[offset+1],indices[offset+2]);continue;}
+   for(const id of indices.subarray(offset,offset+3)){
+     if(!remap.has(id)){
+       remap.set(id,positions.length/3);
+       point.fromBufferAttribute(position,id).toArray(positions,positions.length);
+       point.fromBufferAttribute(normal,id).toArray(normals,normals.length);
      }
-     faces.push(ids.get(id));
+     faces.push(remap.get(id));
    }
  }
- geom.setIndex(fixed);
- const panel=new T.BufferGeometry();
- panel.setAttribute('position',new T.Float32BufferAttribute(positions,3));
- panel.setAttribute('normal',new T.Float32BufferAttribute(directions,3));
- panel.setIndex(faces);panel.computeBoundingBox();
- return panel;
+ geometry.setIndex(body);
+ const wing=new T.BufferGeometry();
+ wing.setAttribute('position',new T.Float32BufferAttribute(positions,3));
+ wing.setAttribute('normal',new T.Float32BufferAttribute(normals,3));
+ wing.setIndex(faces);wing.computeBoundingBox();
+ return wing;
 }
 
-function mountSpoiler(body,panel,paint) {
+function makeSpoiler(panel,paint){
+ const assembly=new T.Group();assembly.name='Rear aero assembly';
  const pivot=panel.boundingBox.getCenter(new T.Vector3());
  panel.translate(-pivot.x,-pivot.y,-pivot.z);
- const blade=new T.Group();blade.name='Active rear spoiler';blade.position.copy(pivot);body.add(blade);
- blade.add(new T.Mesh(panel,paint));
- const lining=new T.MeshStandardMaterial({color:0x20262a,metalness:.32,roughness:.59,side:T.DoubleSide});
- const underside=new T.Mesh(panel,lining);underside.position.y=-.009;blade.add(underside);
- // Close the native opening with a shallow recessed well. The original panel is
- // the floor template, so its curvature meets the lip all the way to each tip.
- const recess=new T.Mesh(panel,lining);recess.position.copy(pivot);recess.position.y-=.033;body.add(recess);
+ assembly.position.copy(pivot);
+ const blade=new T.Mesh(panel,paint);blade.name='Active rear spoiler';assembly.add(blade);
+ const lining=new T.MeshStandardMaterial({color:0x232a2d,metalness:.42,roughness:.48});
+ const up=new T.Vector3(0,1,0);
+ for(const x of [-.36,.36]){
+   // Intersect the native underside so the struts stay attached through the arc.
+   const ray=new T.Raycaster(new T.Vector3(x,-1,.006),up);
+   const hit=ray.intersectObject(blade,false)[0];
+   const arm=box(assembly,.055,1,.048,lining,0,0,0);
+   arm.userData.joint=[x,hit.point.y+.002,.006];
+   arm.userData.base=[x,hit.point.y-.055,.068];
+ }
+ return assembly;
+}
+
+function animateSpoiler(assembly){
+ const [blade,...struts]=assembly.children;
+ const arms=struts.map(arm=>({arm,root:new T.Vector3().fromArray(arm.userData.base),joint:new T.Vector3().fromArray(arm.userData.joint)}));
  const up=new T.Vector3(0,1,0),end=new T.Vector3(),delta=new T.Vector3();
- const arms=[-.30,.30].map(x=>{
-   const root=pivot.clone().add(new T.Vector3(x,-.040,.026));
-   const joint=new T.Vector3(x,-.015,-.010);
-   const rod=box(body,.032,1,.045,lining,0,0,0);
-   return {root,joint,rod};
- });
+ let last=-1;
  function update(t){
-   blade.position.copy(pivot);blade.position.y+=.167*t;blade.position.z-=.089*t;blade.rotation.x=.52*t;
-   for(const {root,joint,rod} of arms){
-     rod.visible=t>.015;if(!rod.visible)continue;
+   if(t===last)return;last=t;
+   blade.position.set(0,.162*t,-.056*t);blade.rotation.x=.50*t;
+   for(const {arm,root,joint} of arms){
+     arm.visible=t>.015;if(!arm.visible)continue;
      end.copy(joint).applyQuaternion(blade.quaternion).add(blade.position);
-     delta.subVectors(end,root);rod.scale.y=delta.length();
-     rod.position.copy(root).lerp(end,.5);rod.quaternion.setFromUnitVectors(up,delta.normalize());
+     delta.subVectors(end,root);arm.scale.y=delta.length();
+     arm.position.copy(root).lerp(end,.5);arm.quaternion.setFromUnitVectors(up,delta.normalize());
    }
  }
- update(0);
- return update;
+ update(0);return update;
 }
 export async function carModel(base64){
  const data=Uint8Array.from(atob(base64),v=>v.charCodeAt(0)).buffer;
@@ -121,7 +131,7 @@ export async function carModel(base64){
   else if(m.name==='Light_glass'){m.transparent=true;m.opacity=.13;m.color.setHex(0xb5e8f4);m.depthWrite=false;}
   const geom=o.geometry.clone();geom.applyMatrix4(o.matrixWorld);geom.translate(-center.x,-box3.min.y,-center.z);geom.scale(scale,scale,scale);
   const meshIndex=parser.associations.get(o)?.meshes;
-  if(meshIndex===39)deckPanel=detachDeckPanel(o.geometry,geom);
+  if(meshIndex===38)deckPanel=detachWing(geom);
   const instrument=cabinParts[meshIndex];
   if(instrument){
    const wheelIDs=new Set(instrument.wheel),screenIDs=new Set(instrument.screen);
@@ -159,17 +169,21 @@ export async function carModel(base64){
    const pivot=bounds.getCenter(new T.Vector3());hub.position.copy(pivot);for(const part of parts){part.position.copy(pivot).negate();spin.add(part);}
    hub.add(spin);geometryGroup.add(hub);wheelPivots.push({hub,spin,front:original.name.includes('Front')});
  }
- const updateWing=mountSpoiler(body,deckPanel,paint);
+ const spoiler=makeSpoiler(deckPanel,paint);body.add(spoiler);
+ const updateWing=animateSpoiler(spoiler);
  geometryGroup.add(softShadow(3.28,6.48));
- const makeOpponent=(tint)=>{
+ function makeOpponent(tint){
    const clone=geometryGroup.clone(true),newPaint=paint.clone(),rivalTail=tail.clone();newPaint.color.setHex(tint);
-   clone.traverse(o=>{if(o.isMesh&&o.material===paint)o.material=newPaint;else if(o.isMesh&&o.material===tail)o.material=rivalTail;else if(o.isMesh&&windows.has(o.material))o.material=o.material.clone();});return clone;
- };
- const lowDetail=exteriorLod(geometryGroup,paint,tail);
+   clone.traverse(o=>{if(o.isMesh&&o.material===paint)o.material=newPaint;else if(o.isMesh&&o.material===tail)o.material=rivalTail;else if(o.isMesh&&windows.has(o.material))o.material=o.material.clone();});
+   clone.userData.setWing=animateSpoiler(clone.getObjectByName(spoiler.name));return clone;
+ }
+ // Keep the wing out of the static LOD body so it cannot appear twice.
+ spoiler.visible=false;const lowDetail=exteriorLod(geometryGroup,paint,tail);spoiler.visible=true;
  function makeDistant(tint){
-    const clone=lowDetail.clone(true);
-    clone.traverse(m=>{if(m.isMesh&&m.name==='paint'){m.material=m.material.clone();m.material.color.setHex(tint);}});
-    return clone;
+   const clone=lowDetail.clone(true),aero=spoiler.clone(true);
+   const shell=clone.getObjectByName('paint');shell.material=shell.material.clone();shell.material.color.setHex(tint);
+   aero.getObjectByName('Active rear spoiler').material=shell.material;
+   clone.add(aero);clone.userData.setWing=animateSpoiler(aero);return clone;
  }
  return {object:geometryGroup,makeOpponent,makeDistant,cockpit(enabled){for(const w of windows)w.opacity=enabled?.025:.87;},suspension(pitch,roll){
     body.rotation.set(pitch,0,roll,'YXZ');
@@ -243,7 +257,15 @@ export async function setupStage(renderer){
  sun.intensity=2.0;world.children.find(light=>light.isHemisphereLight).intensity=1.32;
  const sprintFinish=buildTrack(world,roadPhoto,grassPhoto,treePhotos);
  circuitFurniture(world);
- return {garage,world,sprintFinish};
+ // Painted timing lines sit clear of the curbs. The same marker moves to the next gate.
+ const challengeMarker=new T.Group(),ink=basic(0x58f3cb);
+ for(let i=0;i<12;i++)box(challengeMarker,.65,.016,.42,ink,(i-5.5)*.94,.042,0);
+ for(const side of [-1,1]){
+   box(challengeMarker,.12,1.38,.12,ink,6.95*side,.69,0);
+   box(challengeMarker,.62,.32,.10,ink,7.2*side,1.20,0);
+ }
+ challengeMarker.userData.ink=ink;challengeMarker.visible=false;world.add(challengeMarker);
+ return {garage,world,sprintFinish,challengeMarker};
 }
 function buildTrack(scene,asphalt,grassMap,treePhotos){
  const t=course.terrain,coords=[],indices=[],col=[];

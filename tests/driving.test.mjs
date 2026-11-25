@@ -74,3 +74,42 @@ test('backing with right lock turns the nose left and moves the rear right', () 
   assert.equal(right.lane, -left.lane);
   assert.equal(right.h, -left.h);
 });
+
+for (const kph of [120, 180, 220]) {
+  test(`short press, countersteer and release at ${kph} km/h`, () => {
+    const speed = kph / 3.6;
+    const car = run(fresh(speed), .25, {steerAxis:1});
+    const fine = run(fresh(speed), .25, {steerAxis:.2});
+    assert.ok(car.lane > .21 && car.lane < .34);
+    assert.ok(fine.lane > .02 && fine.lane < .05);
+
+    run(car, .25, {steerAxis:1});
+    const startingLane = car.lane;
+    let ticks = 0;
+    while (ticks < 60 && car.slip > 0) {
+      run(car, .01, {steerAxis:-1});
+      ticks++;
+    }
+    assert.ok(ticks <= 33 && car.lane - startingLane < 1.25);
+    run(car, .3, {steerAxis:-1});
+    assert.ok(car.slip < -2);
+    run(car, .65, {steerAxis:0});
+    assert.ok(Math.abs(car.slip) < .2 && Math.abs(car.h) < .01);
+  });
+
+  test(`linked bends and opposite lane changes at an entry speed of ${kph} km/h`, () => {
+    const speed = kph / 3.6, car = fresh(speed);
+    // Right bend, left bend and exit straight. The simulated driver only samples
+    // lane position and presses a discrete direction key every tenth of a second.
+    const curvature = 11 / speed ** 2;
+    for (const [target, bend] of [[2.6,curvature], [-2.6,-curvature], [0,0]]) {
+      for (let input = 0; input < 15; input++) {
+        const error = target - (car.lane + .24 * car.slip);
+        const axis = Math.abs(error) > .35 ? Math.sign(error) : 0;
+        run(car, .10, {steerAxis:axis}, bend);
+        assert.ok(Math.abs(car.lane) < 4.1);
+      }
+      assert.ok(Math.abs(car.lane - target) < .7);
+    }
+  });
+}

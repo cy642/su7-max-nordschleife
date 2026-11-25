@@ -34,8 +34,8 @@ with tempfile.TemporaryDirectory() as tmp:
     resources, apk = temp / "res.zip", temp / "base.apk"
     run(tool(bt,"aapt2"), "compile", "--dir", here/"res", "-o", resources)
     run(tool(bt,"aapt2"), "link", "--manifest", here/"AndroidManifest.xml", "-I", android,
-        "--min-sdk-version", "28", "--target-sdk-version", "35", "--version-code", "3",
-        "--version-name", "1.1.1", "-o", apk, resources)
+        "--min-sdk-version", "28", "--target-sdk-version", "35", "--version-code", "4",
+        "--version-name", "1.2.0", "-o", apk, resources)
     run(tool(jdk,"javac"), "-encoding", "UTF-8", "-source", "8", "-target", "8",
         "-classpath", android, "-d", classes, here/"RaceActivity.java")
     run(tool(jdk,"jar"), "cf", temp/"code.jar", "-C", classes, ".")

@@ -43,26 +43,31 @@ export function driveCar(car, input, grade, bend, wing, dt) {
 
   const axis = clamp(input.steerAxis, -1, 1);
   const highSpeed = smoothstep(12, 66, speed);
+  // At racing speeds a tap must reach the tyres before the next steering input.
+  // Ramp this in above city speed, and leave the softer grass response intact.
+  const roadResponse = smoothstep(20, 46, speed) * (1 - shoulder);
   const countersteer = axis * car.steer < 0;
-  const steerRate = axis === 0 || countersteer ? 24 : mix(18, 10, highSpeed);
+  const steerRate = axis === 0 || countersteer ? 24 + 12 * roadResponse : mix(18, 10, highSpeed) + 16 * roadResponse;
   car.steer = damp(car.steer, axis, steerRate, dt);
 
   const grip = mix(12.8 + wing * 2.4 * (v / 74) ** 2, 5.45, shoulder);
   const cornerGrip = grip * Math.sqrt(1 - .47 * Math.min(.98, Math.abs(acc) / 16) ** 2);
   // At walking pace the wheel angle sets the radius. At speed tyre grip caps yaw.
-  const maxYaw = Math.sign(v) * Math.min(speed * .16, cornerGrip / Math.max(speed, 1) * mix(1.82, 1.42, highSpeed));
+  const steeringGain = mix(1.82, 1.42, highSpeed) + .22 * roadResponse;
+  const maxYaw = Math.sign(v) * Math.min(speed * .16, cornerGrip / Math.max(speed, 1) * steeringGain);
   const pivot = 1 + handbrake * .36 * smoothstep(4, 16, speed);
   const previousHeading = car.h;
-  car.yawRate = damp(car.yawRate, car.steer * maxYaw * pivot, axis === 0 ? 21 : 15, dt);
+  car.yawRate = damp(car.yawRate, car.steer * maxYaw * pivot, (axis === 0 ? 21 : 15) + 13 * roadResponse, dt);
   const excess = clamp((Math.abs(bend) * v * v - cornerGrip) / grip, 0, 3.2);
   const follow = bend * v * (.49 + .25 * excess);
   // Releasing the control settles the car promptly after a tap. Holding a turn
   // leaves the driver enough steering authority to take a tighter line.
-  const settle = mix(6.6, 1.7, Math.abs(axis));
+  const unwind = axis * car.h < 0 ? Math.abs(axis) : 0;
+  const settle = mix(6.6 + 4 * roadResponse, 1.7, Math.abs(axis)) + 6.5 * roadResponse * unwind;
   car.h = clamp(car.h + dt * (car.yawRate - follow - settle * car.h), -.55, .55);
   const washout = Math.sign(bend) * excess * Math.min(3.6, speed * .065);
   const lateralGoal = Math.sin(car.h) * v - washout;
-  car.slip = damp(car.slip, lateralGoal, mix(15, 6, shoulder), dt);
+  car.slip = damp(car.slip, lateralGoal, mix(15, 6, shoulder) + 11 * roadResponse, dt);
   car.lane += car.slip * dt;
   car.s += Math.cos(car.h) * v * dt;
   const lateralAcc = (bend * v + (car.h - previousHeading) / dt) * v;
