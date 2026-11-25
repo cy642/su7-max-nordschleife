@@ -2,7 +2,7 @@
 
 [打开游戏](https://cy642.github.io/su7-max-nordschleife/)
 
-[下载安卓横屏版 APK](https://github.com/cy642/su7-max-nordschleife/releases/download/android-v1.3.0/Nordrun-1.3.0.apk)
+[下载安卓横屏版 APK](https://github.com/cy642/su7-max-nordschleife/releases/download/android-v1.3.1/Nordrun-1.3.1.apk)
 
 在车库点车名或「换车」，可以选择 SU7 标准版、SU7 Max、YU7 GT、SU7 Ultra 或 Vision GT。车辆选择会保存在当前设备。历史版本的成绩保留在 SU7 Max 名下。车库点「看座舱」即可从驾驶席观察仪表和方向盘。
 

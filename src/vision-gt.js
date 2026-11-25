@@ -1,4 +1,5 @@
 import {createVisionCockpit} from './vision-cockpit.js';
+import {addVisionFrontTrim} from './vision-front-trim.js';
 import * as T from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 
@@ -9,12 +10,15 @@ const stations = [
   // z, half width, outer shoulder y, inner deck y, canopy half width, roof y
   [-2.22,.99,.87,.74,.44,.78],[-2.05,1.035,.97,.80,.52,.90],
   [-1.56,1.07,.985,.84,.63,1.05],[-1.02,1.04,.92,.855,.71,1.18],
-  [-.48,.99,.845,.87,.755,1.285],[.02,.965,.79,.866,.77,1.30],
-  [.46,.975,.77,.84,.748,1.247],[.87,1.025,.817,.807,.66,1.115],
-  [1.19,1.057,.897,.773,.47,.942],[1.39,1.065,.95,.746,.22,.79],
-  [1.47,1.066,.957,.737,0,.737],[1.64,1.068,.955,.717,0,.717],
-  [1.94,1.056,.899,.66,0,.66],[2.24,1.015,.765,.59,0,.59],
-  [2.56,.951,.563,.504,0,.504]
+  [-.48,.99,.845,.864,.765,1.285],[.02,.965,.81,.85,.795,1.30],
+  [.46,.975,.79,.826,.82,1.247],[.87,1.025,.812,.805,.816,1.115],
+  [1.08,1.049,.847,.798,.795,1.012],[1.19,1.057,.861,.785,.777,.95],
+  [1.30,1.062,.868,.763,.757,.891],[1.39,1.065,.873,.741,.684,.832],
+  [1.47,1.066,.876,.727,.528,.782],[1.525,1.067,.878,.724,.31,.742],
+  [1.55,1.068,.88,.723,0,.723],[1.77,1.068,.864,.694,0,.694],
+  [2.04,1.062,.806,.641,0,.641],[2.27,1.047,.718,.565,0,.565],
+  [2.39,1.029,.683,.528,0,.528],[2.49,.999,.652,.501,0,.501],
+  [2.56,.972,.626,.482,0,.482]
 ];
 const clamp=T.MathUtils.clamp, mix=T.MathUtils.lerp, V=(x,y,z)=>new T.Vector3(x,y,z);
 const smooth=(a,b,x)=>T.MathUtils.smoothstep(x,a,b);
@@ -71,12 +75,14 @@ export function createVisionGT(){
   const object=new T.Group(),coach=new T.Group(),fixed=new T.Group(),cabin=new T.Group(),glassParts=new T.Group();
   object.add(coach);const liner=new T.Group();coach.add(fixed,cabin,glassParts,liner);liner.visible=false;
   const pbr=(color,metalness,roughness)=>new T.MeshStandardMaterial({color,metalness,roughness,side:T.DoubleSide});
-  const paint=new T.MeshPhysicalMaterial({color:0xaebfc1,roughness:.27,metalness:.59,clearcoat:.88,clearcoatRoughness:.17,side:T.DoubleSide});
+  const paint=new T.MeshPhysicalMaterial({color:0xb6c6c9,roughness:.34,metalness:.50,clearcoat:.70,clearcoatRoughness:.23,side:T.DoubleSide});
   const black=pbr(0x1a2026,.5,.32),carbon=pbr(0x20282e,.28,.40),rubber=pbr(0x17191b,.02,.74),trim=pbr(0x464e52,.76,.30);
   const shadow=pbr(0x0d141a,.12,.63),rim=pbr(0x4b5157,.84,.30);
-  const glass=new T.MeshPhysicalMaterial({color:0x0c1c25,metalness:.12,roughness:.205,ior:1.4,specularIntensity:.43,clearcoat:.31,clearcoatRoughness:.18,envMapIntensity:.32,transparent:true,opacity:.95,depthWrite:false,side:T.DoubleSide});
+  const glass=new T.MeshPhysicalMaterial({color:0x273b41,metalness:.075,roughness:.32,ior:1.47,specularIntensity:.40,clearcoat:.28,clearcoatRoughness:.26,envMapIntensity:.52,transparent:true,opacity:.94,depthWrite:false,side:T.DoubleSide});
   glass.forceSinglePass=true;
   const gasket=pbr(0x13191d,.10,.50);
+  const frit=pbr(0x101c21,.12,.36),cowl=pbr(0x8c9fa4,.46,.34);
+  const recessed=new T.MeshLambertMaterial({color:0x101416,side:T.DoubleSide});
   // The lower nose lies in the shadow of the floating bonnet. Use woven
   // albedo inside the tunnels so the garage sky does not wash the recess out.
   const weave=document.createElement('canvas');weave.width=weave.height=32;
@@ -87,20 +93,36 @@ export function createVisionGT(){
   }
   const map=new T.CanvasTexture(weave);map.colorSpace=T.SRGBColorSpace;map.wrapS=map.wrapT=T.RepeatWrapping;map.repeat.set(18,10);
   const duct=new T.MeshLambertMaterial({color:0xaab0b2,map,side:T.DoubleSide});
-  const splitter=new T.MeshLambertMaterial({color:0xd2d5d7,map,side:T.DoubleSide});
   const lens=pbr(0x10181c,.30,.22);
   const lamp=(color,intensity)=>new T.MeshStandardMaterial({color,emissive:color,emissiveIntensity:intensity,roughness:.24,side:T.DoubleSide});
   const white=lamp(0xd3ebfb,1.2),red=lamp(0xae0614,.69);
-  const wheelZ=[1.57,-1.49],axleY=.435,wheelR=.435;
+  const wheelZ=[1.57,-1.49],axleY=.419,wheelR=.419;
   function realZ(z,x){
     return z-.26*smooth(1.95,2.56,z)*Math.pow(Math.abs(x),2.4);
   }
+  // Cross section of the bonnet's leading edge. The centre is almost level;
+  // the light apertures rise into the two front wheel pods.
+  const bonnetEdge=[[0,.482],[.22,.483],[.335,.482],[.384,.494],[.431,.516],
+    [.484,.528],[.538,.534],[.629,.549],[.730,.565],[.834,.587],
+    [.909,.605],[.936,.613],[.958,.623],[.972,.637]];
+  function interpolate(points,x){
+    let j=1;while(j<points.length-1&&points[j][0]<x)j++;
+    const a=points[j-1],b=points[j],l=points[Math.max(0,j-2)],r=points[Math.min(points.length-1,j+1)];
+    const h=b[0]-a[0],t=clamp((x-a[0])/h,0,1);
+    const ma=(b[1]-l[1])/(b[0]-l[0])*h,mb=(r[1]-a[1])/(r[0]-a[0])*h;
+    return mix(a[1],b[1],t)+t*(1-t)*((1-t)*(ma+a[1]-b[1])+t*(b[1]-a[1]-mb));
+  }
   function deck(side,z,t){
     const [w,ey,cy,inner]=section(z), x=mix(inner,w,t);
-    const cross=t*t*(3-2*t);
-    const nose=smooth(1.43,2.38,z);
-    const y=mix(cy,ey,cross)+.027*Math.sin(Math.PI*t)**2-.025*Math.pow(t,9)+.046*nose*(1-cross);
-
+    const cross=smooth(.36,.87,t);
+    const crown=.029*Math.sin(Math.PI*t)**2-.019*smooth(.84,1,t);
+    const loft=mix(cy,ey,cross)+crown;
+    // Give each longitudinal section a continuous falling tangent to its tip.
+    // Blending back into a flat-ended radial profile produces a hooked corner.
+    const along=clamp((z-1.55)/(2.56-1.55),0,1);
+    const peak=.723+.164*smooth(.41,.88,t)+.012*Math.sin(Math.PI*t)**2-.009*smooth(.89,1,t);
+    const nose=mix(peak,interpolate(bonnetEdge,x),along*(.38+.62*along));
+    const y=mix(loft,nose,smooth(1.35,1.61,z));
     return [side*x,y,realZ(z,x)];
   }
   function archY(z){
@@ -110,14 +132,14 @@ export function createVisionGT(){
       if(d<radius)sill=Math.max(sill,axleY+Math.sqrt(radius*radius-d*d));
       else if(d<radius+.033)sill=Math.max(sill,mix(axleY,.17,(d-radius)/.033));
     }
-    return Math.max(sill,.165+.30*smooth(2.045,2.30,z));
+    return Math.max(sill,.165+.391*smooth(2.045,2.32,z));
   }
   for(const side of [-1,1]){
     // The bonnet is a single crescent wing: one open horseshoe-shaped throat
     // runs around the *front* of the glazing and returns to both wheel pods.
     function throat(t){
-      const mid=1.92-.93*smooth(.06,.66,t)-.10*smooth(.66,.92,t);
-      const gap=(.052+.050*smooth(.26,.57,t))*(1-smooth(.63,.77,t));
+      const mid=1.68-.60*smooth(.05,.68,t)-.14*smooth(.67,.95,t);
+      const gap=.048*smooth(.19,.59,t)*(1-smooth(.63,.77,t));
       return [mid-gap,mid+gap,gap];
     }
     for(const front of [false,true])patch(fixed,paint,60,40,(s,t)=>{
@@ -140,7 +162,7 @@ export function createVisionGT(){
     }
     patch(fixed,paint,200,9,(s,u)=>{
       const z=mix(-2.22,2.56,s),[w,ey]=section(z),low=archY(realZ(z,w));
-      return [side*(w-.075*(1-u)+.034*Math.sin(Math.PI*u)),mix(low,Math.max(low+.012,ey-.025),u),realZ(z,w)];
+      return [side*(w-.075*(1-u)+.034*Math.sin(Math.PI*u)),mix(low,Math.max(low+.006,deck(side,z,1)[1]),u),realZ(z,w)];
     });
     // Return the edge of the body into each wheel well; never leave a thin
     // sheet floating in front of a tyre when seen from the nose.
@@ -155,17 +177,34 @@ export function createVisionGT(){
     // Windscreen crown and smooth shoulders meet at the belt line.
     function canopy(z,u){
       const [,,y,w,roof]=section(z),angle=u*Math.PI/2;
-      return [side*w*Math.sin(angle),mix(y,roof,Math.max(0,Math.cos(angle))**.84),z];
+      return [side*w*Math.sin(angle)**.60,mix(y,roof,Math.max(0,Math.cos(angle))**.38),z];
     }
-    patch(glassParts,glass,70,26,(s,u)=>canopy(mix(-2.22,1.47,s),u));
+    function glassLimit(z){
+      const [,,y,,roof]=section(z);
+      return Math.acos(clamp((.010+.038*smooth(.7,1.44,z))/Math.max(.001,roof-y),0,1)**(1/.38))*2/Math.PI;
+    }
+    patch(glassParts,glass,94,27,(s,u)=>{const z=mix(-2.22,1.55,s);return canopy(z,glassLimit(z)*u);});
+    patch(glassParts,frit,94,6,(s,u)=>{const z=mix(-2.22,1.55,s);return canopy(z,mix(glassLimit(z),1,u));});
+    // Satin scuttle encircling the base of the windshield. The surface follows
+    // the bonnet as its outward normal turns from lateral to forward at the toe.
+    patch(fixed,cowl,115,7,(s,u)=>{
+      const z=mix(.31,1.55,s),[, , ,w]=section(z);
+      const dw=(section(z+.001)[3]-section(z-.001)[3])/.002;
+      const nx=(1-smooth(1.51,1.55,z))/Math.hypot(1,dw),nz=Math.sqrt(Math.max(0,1-nx*nx));
+      const width=u*mix(.041,.154,smooth(1.08,1.53,z));
+      const zz=z+width*nz,x=w+width*nx,[outside,,,inside]=section(zz);
+      const t=clamp((x-inside)/Math.max(.0001,outside-inside),0,1);
+      const p=deck(side,zz,t);p[1]+=.0025;return p;
+    });
+    // At the roof brow, glazing meets the narrow fixed roof panel.
+    patch(fixed,cowl,32,20,(s,u)=>{
+      const z=mix(-.26,.26-.11*u*u,s),p=canopy(z,.405*u);
+      p[1]+=.002;return p;
+    });
     // Narrow door-glass reveals and windscreen frit follow the glazing surface.
     // Shell and canopy have separate highlights on the physical show car.
     // The windshield hoop is one continuous bent section from sill to sill.
     // Its crown meets the roof liner above the driver's head.
-    patch(glassParts,gasket,48,4,(s,u)=>{
-      const z=mix(.87,-.105,s)+(u-.5)*mix(.018,.009,s);
-      const p=canopy(z,1-s);p[0]*=1.003;p[1]+=.002;return p;
-    });
     patch(glassParts,gasket,30,2,(s,u)=>{
       const p=canopy(mix(-.53,-.69,s)+(u-.5)*.013,1-.8*s);
       p[0]*=1.003;p[1]+=.002;return p;
@@ -192,46 +231,125 @@ export function createVisionGT(){
     for(let i=0;i<3;i++)tube(fixed,gasket,[[side*.993,.763+i*.016,.81],[side*1.023,.766+i*.016,.93],[side*1.037,.776+i*.016,1.02]],.0055);
     tube(fixed,carbon,[[side*.973,.155,-1.09],[side*1.004,.147,-.3],[side*1.02,.14,.82]],.036);
     tube(fixed,trim,[[side*1.032,.81,.70],[side*1.011,.67,.47],[side*.993,.34,.30],[side*.978,.238,.05],[side*.973,.23,-.84]],.005);
-    // Slim white DRL on the fender, with a recessed horizontal headlight beneath it.
-    function noseLip(t,drop,out){
-      const p=deck(side,2.56,t);p[1]-=drop;p[2]+=out;return p;
+    // A single deep, upswept optical cavity follows the underside of the pod.
+    // Its outer end wraps around the silver upright; its inner end dies into
+    // the rolled leading edge of the bonnet.
+    const innerX=.337,outerX=.962;
+    const lower=[[.337,.454],[.403,.45],[.55,.460],[.64,.472],[.75,.481],
+      [.865,.486],[.925,.496],[.948,.514],[.958,.55],[.962,.605]];
+    function aperture(x,v){
+      const top=interpolate(bonnetEdge,x)-.009-.018*(1-smooth(.337,.45,x));
+      const low=Math.min(top,interpolate(lower,x));
+      const rimZ=realZ(2.56,x)-.001;
+      return [side*x,mix(low,top,v),rimZ-.019*(1-v)-.023*Math.sin(Math.PI*v)];
     }
-    // The light is recessed in the front edge of the bonnet, not suspended on
-    // a straight bar. A separate vertical DRL follows the crown of each pod.
-    patch(fixed,lens,32,4,(s,u)=>noseLip(mix(.39,.99,s),mix(.012,.058,u),.016));
-    patch(fixed,white,34,1,(s,u)=>noseLip(mix(.52,.965,s),.036+.006*u,.018));
-    const runningLight=[2.05,2.14,2.23,2.33,2.43,2.51];
-    tube(fixed,white,runningLight.map(z=>{const p=deck(side,z,.833);p[1]+=.006;return p;}),.009);
-    // A rounded upright under each DRL closes the ends of the air opening.
-    // Its front face returns beneath the wing and tapers back into the arch.
-    const cheek=curve([[.803,0,2.397],[.865,0,2.398],[.958,0,2.308],[.999,0,2.15],
-      [.998,0,2.02],[.951,0,2.005],[.865,0,2.105],[.79,0,2.325]],true);
-    patch(fixed,paint,12,42,(v,u)=>{
-      const c=cheek.getPointAt(u%1);
-      return [side*(c.x+.009*Math.sin(Math.PI*v)),.164+.368*v+.025*(c.x-.8),c.z-.018*(1-v)+.006*Math.sin(v*Math.PI)];
+    patch(fixed,lens,76,8,(s,v)=>aperture(mix(innerX,outerX,s),v));
+    for(const edge of [0,1])patch(fixed,black,64,3,(s,v)=>{
+      const p=aperture(mix(innerX,outerX,s),edge);p[2]-=.058*v;p[1]+=(edge?1:-1)*.006*v;return p;
     });
-    tube(fixed,white,[[side*.845,.209,2.388],[side*.843,.344,2.398],[side*.842,.479,2.401]],.008);
-    patch(fixed,duct,9,5,(s,u)=>[side*(.25+.08*(1-s)+.022*u),mix(.148,.477,s),mix(2.02,2.39,u)-.045*s]);
-    for(let k=0;k<7;k++){
-      const slat=block(fixed,trim,side*.46,.209+k*.038,2.097,.75,.008,.052);
-      slat.rotation.x=-.24;
+    // The outer projector pocket curls back underneath the light guide.
+    // Its rounded end meets the silver upright without a straight cut-off.
+    const pocket=pbr(0x172126,.30,.235);
+    patch(fixed,pocket,36,10,(s,u)=>{
+      const x=mix(.765,.951,s),p=aperture(x,.35+.17*u);
+      const arc=Math.sin(Math.PI*s)**.63;p[1]-=.027*arc*(1-u);p[2]+=.010*arc*Math.sin(Math.PI*u);
+      return p;
+    });
+    // Each horizontal light guide has a charcoal bezel and a narrow diffuser.
+    const guideHeights=[[.551,.483],[.645,.494],[.750,.516],[.858,.536],[.925,.551]];
+    function guide(t,v,bezel){
+      const x=mix(.555,.919,t),y=interpolate(guideHeights,x)+(v-.5)*(bezel?.012:.0067);
+      return [side*x,y,realZ(2.56,x)-(bezel?.025:.022)];
     }
+    patch(fixed,trim,42,2,(s,v)=>guide(s,v,true));
+    patch(fixed,white,42,2,(s,v)=>guide(s,v,false));
+
+    // Flush upper signature: a broad flat inset, normal to the fender surface.
+    // Both edges are measured on the compound-curved pod. The changing
+    // lateral coordinates keep the guide straight across the fender crown.
+    const stripEdges=[
+      [2.2865,.8556,2.2846,.8778],[2.3595,.8536,2.3601,.8765],
+      [2.4235,.8541,2.4255,.8774],[2.4783,.8557,2.4811,.8792],
+      [2.5256,.8564,2.5287,.8797],[2.5683,.8514,2.5739,.8709]];
+    function upperStrip(s,v,bezel){
+      const f=s*(stripEdges.length-1),j=Math.min(stripEdges.length-2,Math.floor(f));
+      const a=stripEdges[j],b=stripEdges[j+1],u=bezel?mix(-.065,1.065,v):v;
+      const z=mix(mix(a[0],b[0],f-j),mix(a[2],b[2],f-j),u);
+      const t=mix(mix(a[1],b[1],f-j),mix(a[3],b[3],f-j),u);
+      const p=deck(side,Math.min(z,2.56),t);
+      p[1]+=(bezel?.0014:.0024)-Math.max(0,z-2.56)*.56;
+      p[2]+=Math.max(0,z-2.56)*.21;return p;
+    }
+    patch(fixed,trim,40,3,(s,v)=>upperStrip(s,v,true));
+    patch(fixed,white,40,3,(s,v)=>upperStrip(s,v,false));
+
+    const cheek=curve([[.765,0,2.35],[.815,0,2.376],[.876,0,2.361],
+      [.927,0,2.315],[.959,0,2.226],[.966,0,2.088],[.918,0,2.047],
+      [.827,0,2.11],[.76,0,2.245]],true);
+    function pillar(s,u,base){
+      const c=cheek.getPointAt(u%1),round=.25+.014*smooth(.85,.96,c.x);
+      const top=interpolate(lower,clamp(c.x,.34,.962))-.005;
+      const y=base?mix(.128,round,s):mix(round,top,s);
+      const toe=1-clamp((y-round)/(top-round),0,1);
+      const x=.874+(c.x-.874)*.90+.011*toe;
+      return [side*x,y,c.z+.005*toe-.004];
+    }
+    patch(fixed,carbon,7,60,(s,u)=>pillar(s,u,true));
+    patch(fixed,paint,16,60,(s,u)=>pillar(s,u,false));
+    function lowerStrip(s,v,bezel){
+      const y=mix(.297,.486,s),toe=1-clamp((y-.25)/.24,0,1);
+      const x=.873+toe*.014+(v-.5)*(bezel?.023:.018);
+      // Follow the rounded front face, keeping the guide in its silver carrier.
+      return [side*x,y+.003*(v-.5),2.365+.005*toe-(x-(.873+toe*.014))*.55+(bezel?.001:.003)];
+    }
+    patch(fixed,trim,32,3,(s,v)=>lowerStrip(s,v,true));
+    patch(fixed,white,32,3,(s,v)=>lowerStrip(s,v,false));
+
+    // Paired structural pylons behind the nose. Their feet land on the carbon
+    // floor; the passages between them and the outboard uprights stay open.
+    const post=curve([[-.029,0,0],[-.024,0,.042],[0,0,.050],[.025,0,.033],
+      [.031,0,-.008],[.022,0,-.161],[-.016,0,-.179]],true);
+    patch(fixed,carbon,10,32,(s,u)=>{const c=post.getPointAt(u%1);
+      const foot=1+.36*(1-smooth(0,.20,s));
+      return [side*(.297+foot*c.x+.004*s),mix(.129,.487,s),2.275+foot*c.z+.002*s];});
+    // The open mouth bifurcates into a central cooling passage and two
+    // wheel ducts. The ceiling, inner cheek and rolled sill frame the far wall.
+    const opening=curve([[.365,.151,2.19],[.39,.144,2.191],[.63,.148,2.189],
+      [.725,.17,2.189],[.749,.205,2.184],[.72,.252,2.181],
+      [.681,.286,2.181],[.59,.297,2.184],[.40,.294,2.186],[.354,.28,2.187]],true);
+    const deep=pbr(0x12181b,.09,.74);
+    patch(fixed,deep,52,6,(s,u)=>{
+      const p=opening.getPointAt(s%1);
+      return [side*mix(p.x,.55+(p.x-.55)*.84,u),mix(p.y,.20+(p.y-.20)*.72,u),p.z-.25*u];
+    });
+    // Surround the opening with one continuous fairing instead of a grille.
+    patch(fixed,duct,52,5,(s,u)=>{
+      const p=opening.getPointAt(s%1),dx=p.x-.55,dy=p.y-.221;
+      const outerX=clamp(.55+dx*1.62,.30,.845);
+      const outerY=clamp(.221+dy*3.9,.127,.501);
+      return [side*mix(p.x,outerX,u),mix(p.y,outerY,u),p.z+u*.038];
+    });
+    // Through the aperture the upper diffuser surface catches soft skylight.
+    const turnVane=pbr(0x272f32,.08,.81);turnVane.envMapIntensity=.30;
+    patch(fixed,turnVane,16,26,(s,u)=>[side*mix(.351,.759,u),
+      .145+.041*s+.018*Math.sin(Math.PI*u),mix(1.89,2.151,s)]);
+    patch(fixed,recessed,18,28,(s,u)=>{
+      const x=.303*u;
+      return [side*x,.134+.27*s-.024*u**5,2.168-.10*s-.04*u*u];
+    });
+
   }
-  // Projecting nose and the open front intake above the curved splitter.
-  patch(fixed,paint,6,46,(s,u)=>{const x=(2*u-1)*.951;const top=deck(x<0?-1:1,2.56,Math.abs(x)/.951);return [x,top[1]-.047*(1-s),top[2]+.010*Math.sin(s*Math.PI)-.014*(1-s)];});
-  patch(fixed,shadow,12,48,(s,u)=>{const x=(2*u-1)*.986;return [x,mix(.13,.59,s),2.09-.13*x*x];});
-  // Upper and lower throat surfaces seal the duct in all camera angles.
-  patch(fixed,duct,10,48,(s,u)=>{const x=(2*u-1)*.955;return [x,.466+.023*x*x+.035*(1-s),mix(2.04,2.545-.26*x*x,s)];});
-  patch(fixed,splitter,10,48,(s,u)=>{const x=(2*u-1)*1.014;return [x,.144+.077*(1-s)+.017*x*x,mix(2.07,2.602-.24*x*x,s)];});
-  // A slim badge sits on the centreline of the nose.
-  const badgeZ=2.375,badgeY=deck(1,badgeZ,0)[1];
-  const badge=mesh(fixed,new T.CylinderGeometry(.033,.033,.0025,32),trim);
-  badge.position.set(0,badgeY+.003,badgeZ);badge.rotation.x=.25;
-  decal(fixed,'mi',.066,.032,[0,badgeY+.005,badgeZ],[-Math.PI/2+.25,0,Math.PI]);
-  patch(fixed,splitter,9,50,(s,u)=>{const x=(2*u-1)*1.052;return [x,.128+.024*s+.02*x*x,mix(1.43,2.63-.26*Math.abs(x)**2.3,s)];});
-  patch(fixed,splitter,10,62,(s,u)=>{
-    const x=(2*u-1)*1.052,theta=s*Math.PI;return [x,.128+.02*x*x-.021*Math.sin(theta),2.63-.26*Math.abs(x)**2.3-.035*(1-Math.cos(theta))];
+  // Rounded silver lip, thick in the middle and finely rolled over the lenses.
+  patch(fixed,paint,8,116,(s,u)=>{
+    const x=(2*u-1)*.972,abs=Math.abs(x),thickness=.008+.025*(1-smooth(.335,.48,abs));
+    return [x,interpolate(bonnetEdge,abs)-thickness*(1-s),
+      realZ(2.56,x)+.007*Math.sin(s*Math.PI)-.006*(1-s)];
   });
+  patch(fixed,duct,9,70,(s,u)=>{
+    const x=(2*u-1)*.962;return [x,interpolate(bonnetEdge,Math.abs(x))-.038-.067*(1-s),
+      mix(1.91,realZ(2.56,x)-.025,s)];
+  });
+  addVisionFrontTrim(fixed,deck,patch);
   // Long central dorsal blade above the tapering glass. It runs fore/aft.
   for(const side of [-1,1])patch(fixed,black,40,6,(s,u)=>{
     const z=mix(-2.06,-.10,s),roof=section(z)[4];
@@ -274,14 +392,18 @@ export function createVisionGT(){
   const throughGlass=new T.Group(),seatCloth=pbr(0x26353a,.02,.90);coach.add(throughGlass);
   for(const x of [-.32,.32]){
     const back=mesh(throughGlass,new T.SphereGeometry(1,18,12),seatCloth);
-    back.scale.set(.22,.225,.105);back.position.set(x,.72,-.46);back.rotation.x=-.22;
+    back.scale.set(.198,.198,.092);back.position.set(x,.72,-.46);back.rotation.x=-.22;
   }
+  // A subdued yoke reads through the glass in close front views.
+  tube(throughGlass,black,[[.175,.674,.29],[.204,.734,.30],[.30,.748,.30],
+    [.37,.724,.30],[.435,.747,.30],[.484,.723,.30],[.489,.654,.29],
+    [.439,.617,.29],[.22,.619,.29]],.016,32,true);
   block(throughGlass,shadow,0,.59,.55,1.19,.128,.27);
   batch(throughGlass);cabin.visible=false;
   // Flush vortex caps and their stationary transverse fairings sit inside the tyre.
   const wheels=[];
   for(const z of wheelZ)for(const side of [-1,1]){
-    const hub=new T.Group();hub.position.set(side*.932,axleY,z);object.add(hub);
+    const hub=new T.Group();hub.position.set(side*.932,axleY,z);hub.scale.set(1,wheelR/.435,wheelR/.435);object.add(hub);
     function revolved(mat,profile){
       const geometry=new T.LatheGeometry(profile.map(([r,x])=>new T.Vector2(r,x)),56);
       const m=mesh(hub,geometry,mat);m.rotation.z=-side*Math.PI/2;return m;

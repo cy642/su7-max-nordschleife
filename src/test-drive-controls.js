@@ -3,7 +3,7 @@ import * as T from 'three';
 // Lens centres in the local coordinates of the five player models.
 const lenses = {
   su7:[.76,.630,2.203,.76], max:[.76,.630,2.203,.76], ultra:[.76,.630,2.203,.76],
-  yu7gt:[.776,.681,2.211,.76], visiongt:[.859,.334,2.432,.36]
+  yu7gt:[.776,.681,2.211,.76], visiongt:[.874,.541,2.355,.40]
 };
 
 export function createTestDriveControls(carRoot) {
@@ -28,8 +28,8 @@ export function createTestDriveControls(carRoot) {
     emitters.forEach((mesh,i) => {
       const side = i ? 1 : -1;
       mesh.position.set(x*side,y,z);
-      mesh.rotation.y = angle*side;
-      mesh.scale.set(id==='visiongt'?.021:.047,id==='visiongt'?.067:.018,.014);
+      mesh.rotation.set(0,angle*side,id==='visiongt'?.24*side:0,'YXZ');
+      mesh.scale.set(id==='visiongt'?.026:.047,id==='visiongt'?.008:.018,.014);
     });
     beam.position.set(0,y,z+.19);
   }
