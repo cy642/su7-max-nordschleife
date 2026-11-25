@@ -1,6 +1,7 @@
 import * as T from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {VEHICLES} from './vehicles.mjs';
+import {suvPoint} from './yu7-profile.mjs';
 import {pts} from './track.mjs';
 
 const carbon=new T.MeshStandardMaterial({color:0x202428,metalness:.42,roughness:.37,side:T.DoubleSide});
@@ -158,26 +159,6 @@ function addUltra(body){
  addParts(body,carbon,stripes);
 }
 
-// The SUV has a longer roof, a much steeper rear window, a higher waist and
-// wider haunches. Wheel centres stay at the 3 m wheelbase as the greenhouse
-// moves rearward. The same deformation locates the mirrors and interior trim.
-const roofStations=[[-2.50,-2.50],[-2.32,-2.38],[-1.98,-2.22],[-1.65,-2.04],[-1.2,-1.76],[-.72,-1.27],[-.28,-.62],[.15,-.02],[.62,.57],[1.08,1.08]];
-function suvPoint(x,y,z){
- let roofZ=z;
- for(let i=1;i<roofStations.length;i++){
-   const [s0,t0]=roofStations[i-1],[s1,t1]=roofStations[i];
-   if(z<s0||z>s1)continue;
-   const prev=roofStations[Math.max(0,i-2)],next=roofStations[Math.min(roofStations.length-1,i+1)];
-   const t=(z-s0)/(s1-s0),u=1-t;
-   const m0=(t1-prev[1])/(s1-prev[0]),m1=(next[1]-t0)/(next[0]-s0);
-   roofZ=(1+2*t)*u*u*t0+t*u*u*(s1-s0)*m0+t*t*(3-2*t)*t1-t*t*u*(s1-s0)*m1;break;
- }
- const high=smooth(y,.70,1.19),rear=smooth(-z,.34,1.7);
- const shoulder=.13*rear*smooth(y,.56,1.0)*(1-smooth(y,1.19,1.44));
- const clearance=.067*smooth(y,.16,.95)+.055*smooth(y,.92,1.40);
- const hip=.032*Math.exp(-((Math.abs(z)-1.50)**2)/.19)*smooth(y,.35,.78)*(1-smooth(y,1.08,1.35));
- return [x*(1.018+hip),y+clearance+shoulder,T.MathUtils.lerp(z,roofZ,high)*1.0036];
-}
 function cleanBadge(body){
  for(const m of body.children){
    if(!m.isMesh||!m.geometry.index||!/Details_MAT/.test(m.material.name))continue;
@@ -218,12 +199,28 @@ function dashboardMap(body,id){
  update(0,false);return update;
 }
 function rearBadge(body,id){
+ if(id==='yu7gt'){
+   const canvas=document.createElement('canvas');canvas.width=256;canvas.height=64;
+   const ctx=canvas.getContext('2d');ctx.textBaseline='middle';ctx.font='italic 700 49px Arial';
+   ctx.fillStyle='#323237';ctx.fillText('YU7',3,35);ctx.fillStyle='#a64838';ctx.fillText('GT',113,35);
+   const map=new T.CanvasTexture(canvas);map.colorSpace=T.SRGBColorSpace;map.anisotropy=4;
+   const probe=surfaceProbe(body),g=new T.PlaneGeometry(.180,.042,16,4),p=g.attributes.position;
+   const [cx,cy]=suvPoint(-.46,.70,-2.454);
+   for(let i=0;i<p.count;i++){
+     const x=cx-p.getX(i),y=cy+p.getY(i),rear=probe(x,y,0,'z',-1);
+     if(!rear)return;
+     p.setXYZ(i,x,y,rear.z-.0025);
+   }
+   g.computeVertexNormals();
+   body.add(new T.Mesh(g,new T.MeshBasicMaterial({map,transparent:true,depthWrite:false,side:T.DoubleSide})));
+   return;
+ }
  const canvas=document.createElement('canvas');canvas.width=320;canvas.height=80;
  const ctx=canvas.getContext('2d');ctx.font='italic 600 46px Arial';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#d0d5d7';
  ctx.fillText({su7:'SU7',ultra:'SU7 Ultra',yu7gt:'YU7 GT'}[id],160,40);
  const tex=new T.CanvasTexture(canvas);tex.colorSpace=T.SRGBColorSpace;
  const label=new T.Mesh(new T.PlaneGeometry(.20,.050),new T.MeshBasicMaterial({map:tex,transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2}));
- const xyz=id==='yu7gt'?suvPoint(-.427,.719,-2.46):[-.427,.719,-2.46],probe=surfaceProbe(body);
+ const xyz=[-.427,.719,-2.46],probe=surfaceProbe(body);
  const at=probe(xyz[0],xyz[1],0,'z',-1),left=probe(xyz[0]-.012,xyz[1],0,'z',-1);
  if(at&&left){
    label.position.copy(at);label.position.z-=.003;
@@ -242,6 +239,27 @@ function flushRoof(body){
    }
    g.computeVertexNormals();m.geometry=g;
  }
+}
+// The donor mesh uses a single luminous material for the entire rear lens.
+// Give the GT a smoked housing with a thin guide across the hatch and two
+// swept returns. These stations sit on the donor lens before the SUV warp.
+function gtLightGuide(body,tail){
+ const housing=new T.MeshPhysicalMaterial({
+   color:0x4d0f1b,roughness:.36,metalness:.09,clearcoat:.45,clearcoatRoughness:.25,envMapIntensity:.68
+ });
+ for(const m of body.children)if(m.isMesh&&m.material===tail)m.material=housing;
+ const path=[
+   [0,.806,-2.465],[.20,.806,-2.455],[.39,.806,-2.430],[.53,.806,-2.398],
+   [.598,.806,-2.374],[.68,.807,-2.333],[.76,.808,-2.271],[.81,.809,-2.209],
+   [.84,.811,-2.155],[.854,.814,-2.122],[.858,.816,-2.109],
+   [.854,.820,-2.117],[.84,.829,-2.140],[.81,.842,-2.183],[.76,.857,-2.227],
+   [.68,.873,-2.277],[.60,.884,-2.319],[.54,.887,-2.342],[.505,.888,-2.355]
+ ];
+ const side=sign=>path.map(([x,y,z])=>P(...suvPoint(sign*x,y,z-.006)));
+ const rail=new T.CatmullRomCurve3([...side(-1).reverse(),...side(1).slice(1)]);
+ const guide=new T.Mesh(new T.TubeGeometry(rail,144,.0068,8,false),tail);
+ guide.name='YU7 GT rear light guide';
+ return guide;
 }
 function shapeSUV(body,handwheel){
  for(const m of body.children){
@@ -299,29 +317,173 @@ function gtSill(probe,side){
  }
  return rings.length>1?loft(rings):null;
 }
+function gtHatch(roof){
+ const crown=[],feet=[],lipRings=[];
+ const rootZ=x=>-1.51+.11*(Math.abs(x)/.62)**2;
+ function wing(x){
+   const edge=Math.abs(x)/.62,z=rootZ(x),front=roof(x,0,z,'y',1);
+   if(!front)return null;
+   // Front edge sits in the roof skin; the swept return overhangs the glass.
+   const y=front.y,rear=z-.34+.14*edge**3;
+   return [[x,y-.008,z+.036],[x,y+.009,z+.012],[x,y+.023,z-.09],
+     [x,y+.017,rear+.042],[x,y+.004,rear],[x,y-.014,rear+.013],
+     [x,y-.025,z-.106],[x,y-.019,z+.015]];
+ }
+ for(let i=-18;i<=18;i++){const ring=wing(i*.62/18);if(ring)crown.push(ring);}
+ for(const sign of [-1,1]){
+   const sections=[];
+   for(const span of [.505,.53,.565,.588]){
+     const x=sign*span,z=rootZ(x),edge=span/.62,y=wing(x)?.[6][1];
+     const front=z-.055,rear=z-.29+.13*edge**3;
+     const a=roof(x,0,front,'y',1),b=roof(x,0,rear,'y',1);if(!a||!b||y===undefined)continue;
+     sections.push([[x,a.y-.008,front],[x,b.y-.010,rear+.035],[x,y+.013,rear],[x,y+.014,front]]);
+   }
+   if(sections.length>1)feet.push(loft(sections));
+ }
+ // The hatch creases gently into the lamp surround, with no freestanding crossbar.
+ for(let i=-22;i<=22;i++){
+   const t=i/22,x=.68*t,z=-2.373+.231*t*t;
+   const a=roof(x,0,z+.092,'y',1),b=roof(x,0,z+.032,'y',1),c=roof(x,0,z,'y',1);if(!a||!b||!c)continue;
+   const rise=.015*(1-t**4);
+   lipRings.push([[x,a.y-.004,a.z],[x,b.y+rise*.53,b.z],[x,c.y+rise,c.z-.007],
+     [x,c.y-.008,c.z-.009],[x,b.y-.008,b.z]]);
+ }
+ return {roof:[...(crown.length>1?[loft(crown)]:[]),...feet],lip:lipRings.length>1?[loft(lipRings)]:[]};
+}
+
+function gtDiffuser(body,probe){
+ const shell=[],pods=[],vanes=[],topEdge=[],reflectors=[],mix=T.MathUtils.lerp;
+ // Sample the deformed bumper. The low edge turns underneath where the source
+ // mesh recedes into the wheel well, instead of following that opening forwards.
+ const top=x=>.587-.183*smooth(Math.abs(x),.51,.88);
+ const bottom=x=>.238+.035*smooth(Math.abs(x),.7,.88);
+ const envelope=new Map();
+ function stern(x){
+   if(envelope.has(x))return envelope.get(x);
+   let rear=0;
+   for(let i=0;i<=10;i++){
+     const p=probe(x,mix(bottom(x),top(x),i/10),0,'z',-1);
+     if(p)rear=Math.min(rear,p.z);
+   }
+   envelope.set(x,rear);return rear;
+ }
+ const coverZ=(x,y)=>{
+   const z=stern(x);if(z> -1.8)return null;
+   const shoulder=smooth(Math.abs(x),.21,.36),u=T.MathUtils.clamp((y-bottom(x))/(top(x)-bottom(x)),0,1);
+   const surface=probe(x,y,0,'z',-1)?.z??z;
+   const pocket=(1-shoulder)*.088*(1-smooth(u,.76,1));
+   const contour=z-.010+.088*(1-u)**3-shoulder*.033*Math.sin(Math.PI*u)+pocket;
+   return Math.min(surface-.008,contour);
+ };
+ for(let i=-36;i<=36;i++){
+   const x=.88*i/36,h=top(x),l=bottom(x),ring=[];
+   for(let j=0;j<=12;j++){
+     const y=mix(h,l,j/12),z=coverZ(x,y);
+     if(z!==null)ring.push([x,y,z]);
+   }
+   if(ring.length!==13)continue;
+   const cap=ring[0][2];
+   topEdge.push([[x,h+.003,cap+.019],[x,h+.005,cap-.004],[x,h-.008,cap-.012],[x,h-.011,cap+.026]]);
+   ring.push([x,l-.009,ring.at(-1)[2]+.09],[x,h-.008,cap+.032]);
+   shell.push(ring);
+ }
+ for(const sign of [-1,1])for(const offset of [.43,.66]){
+   const rings=[];
+   for(let i=0;i<=8;i++){
+     const u=i/8,x=sign*(offset+.032*(1-u)),y=mix(bottom(x)-.005,top(x)-.080,u);
+     const z=coverZ(x,y);if(z===null)continue;
+     const reach=.010+.067*(1-u*u),w=.004+.008*(1-u*.65),tip=x+sign*.022*(1-u);
+     rings.push([[x-w,y,z+.022],[tip-w*.72,y,z-reach],[tip+w*.43,y,z-reach-.004],[x+w,y,z+.021]]);
+   }
+   if(rings.length>1)vanes.push(loft(rings));
+ }
+ const bumper=new T.MeshStandardMaterial({color:0x141719,metalness:.05,roughness:.54,envMapIntensity:.34,side:T.DoubleSide});
+ const satin=new T.MeshStandardMaterial({color:0x141719,metalness:.13,roughness:.40,envMapIntensity:.57,side:T.DoubleSide});
+ if(shell.length>1)addParts(body,bumper,[loft(shell)]);
+ if(topEdge.length>1)vanes.push(loft(topEdge));
+ for(const sign of [-1,1]){
+   const casing=[];
+   for(let col=0;col<=24;col++){
+     const t=col/24,x=sign*mix(.282,.846,t),ends=smooth(t,0,.105)*(1-smooth(t,.80,1));
+     const hi=top(x)-.052-.034*(1-ends),lo=bottom(x)+.009+.027*(1-ends),ring=[];
+     // Slightly rounded external pods stop at either side of the central
+     // license carrier. The two upright blades emerge from each pod.
+     for(let j=0;j<=12;j++){
+       const u=j/12,y=mix(hi,lo,u),z=coverZ(x,y);
+       const bulge=ends*(.009+.025*Math.pow(Math.sin(Math.PI*u),.55));
+       ring.push([x,y,z-.007-bulge]);
+     }
+     ring.push([x,lo+.003,ring.at(-1)[2]+.043],[x,hi-.003,ring[0][2]+.036]);
+     casing.push(ring);
+   }
+   pods.push(loft(casing));
+   const rings=[];
+   for(let i=0;i<=16;i++){
+     const x=sign*mix(.33,.588,i/16),y=top(x)-.024,z=coverZ(x,y);
+     rings.push([[x,y+.005,z-.002],[x,y+.005,z-.006],[x,y-.004,z-.006],[x,y-.004,z-.002]]);
+   }
+   reflectors.push(loft(rings));
+ }
+ const graphiteSkin=new T.MeshStandardMaterial({color:0x262728,metalness:.04,roughness:.64,envMapIntensity:.33,side:T.DoubleSide});
+ addParts(body,graphiteSkin,pods);
+ addParts(body,new T.MeshStandardMaterial({color:0x6c1922,roughness:.31,metalness:.08,side:T.DoubleSide}),reflectors);
+ // A small raised camera housing above the plate, as on the GT fascia.
+ const camera=probe(0,.529,0,'z',-1);
+ if(camera){
+   const surround=new T.SphereGeometry(.018,12,6);surround.scale(1.2,.8,.66);surround.translate(0,.527,camera.z-.016);
+   addParts(body,satin,[surround]);
+ }
+ const plateCanvas=document.createElement('canvas');plateCanvas.width=384;plateCanvas.height=126;
+ const g=plateCanvas.getContext('2d');g.fillStyle='#171a1b';g.fillRect(0,0,384,126);
+ g.fillStyle='#e5e4df';g.beginPath();
+ if(g.roundRect)g.roundRect(6,6,372,114,6);else g.rect(6,6,372,114);
+ g.fill();
+ g.fillStyle='#262729';g.font='italic 700 48px Arial';g.textAlign='center';g.textBaseline='middle';g.fillText('YU7 GT',192,67);
+ const map=new T.CanvasTexture(plateCanvas);map.colorSpace=T.SRGBColorSpace;map.anisotropy=4;
+ const plate=new T.PlaneGeometry(.485,.15),p=plate.attributes.position;
+ // The license plate is rigid. Fit a single tilted mounting plane in front
+ // of the entire recess, including the factory bumper's curved lower bead.
+ const slope=-.18;
+ let plateZ=0;
+ for(let col=-5;col<=5;col++)for(let row=-3;row<=3;row++){
+   const x=col*.049,y=.435+row*.025;
+   plateZ=Math.min(plateZ,coverZ(x,y)-slope*(y-.435)-.014);
+ }
+ const mount=[];
+ for(let i=-14;i<=14;i++){
+   const u=i/14,x=.281*u,round=smooth(Math.abs(u),.86,1),hi=.524-.023*round,lo=.332+.012*round;
+   const z=y=>plateZ+slope*(y-.435)+.006;
+   mount.push([[x,hi,z(hi)+.025],[x,hi-.004,z(hi)],[x,lo,z(lo)],[x,lo-.003,z(lo)+.03]]);
+ }
+ vanes.push(loft(mount));
+ // The lower, shallow diffuser flap spans only the recess below the plate.
+ const flap=[];
+ for(let i=-14;i<=14;i++){
+   const x=.291*i/14,lift=.014*(i/14)**2,y=.279+lift,z=coverZ(x,y)-.012;
+   flap.push([[x,y+.013,z+.048],[x,y+.008,z-.010],[x,y-.007,z-.013],[x,y-.009,z+.033]]);
+ }
+ addParts(body,new T.MeshLambertMaterial({color:0x202224,side:T.DoubleSide}),[loft(flap)]);
+ addParts(body,satin,vanes);
+ for(let i=0;i<p.count;i++){
+   const x=-p.getX(i),y=.435+p.getY(i);
+   p.setXYZ(i,x,y,plateZ+slope*(y-.435));
+ }
+ plate.computeVertexNormals();
+ body.add(new T.Mesh(plate,new T.MeshStandardMaterial({map,side:T.DoubleSide,roughness:.62})));
+}
 function addGT(body,bodyPaint,wheels){
  const paint=bodyPaint.clone();paint.side=T.DoubleSide;
- const red=[],dark=[];
- // A bridged roof wing frames the hatch. The lower ducktail follows the lamp line.
- const roof=surfaceProbe(body,true),sections=[];
- for(let i=-10;i<=10;i++){
-   const x=i*.061,edge=Math.abs(i)/10,z=-1.55+edge**2*.09,top=roof(x,0,z,'y',1);
-   if(!top)continue;
-   const y=top.y-.006,tail=z-.34+.13*edge**3;
-   sections.push([[x,y+.008,z+.045],[x,y+.027,z-.07],[x,y+.036,tail],[x,y+.016,tail-.012],[x,y-.012,z-.10]]);
- }
- if(sections.length>1)dark.push(loft(sections));
- for(const side of [-1,1]){
-
-   dark.push(flange(side,-1.09,1.09,.952,.193,.068,.035));
- }
- red.push(aerofoil(.71,1.212,-2.382,.15,-.048,.125));
+ const dark=[];
+ const hatch=gtHatch(surfaceProbe(body,true));
+ for(const side of [-1,1])dark.push(flange(side,-1.09,1.09,.952,.193,.068,.035));
  dark.push(lip(body,1,.244,.95,.044));
  // Place the small bumper inlets on the flanks of the real front shell.
  const probe=surfaceProbe(body);
  for(const sign of [-1,1])dark.push(gtIntake(probe,sign),gtSill(probe,sign));
  for(const {hub} of wheels)dark.push(gtArch(probe,hub));
- addParts(body,paint,red);addParts(body,carbon,dark.filter(Boolean));addDiffuser(body);
+ const roofFinish=new T.MeshStandardMaterial({color:0x121618,metalness:.07,roughness:.54,envMapIntensity:.35,side:T.DoubleSide});
+ addParts(body,roofFinish,hatch.roof);addParts(body,paint,hatch.lip);
+ addParts(body,carbon,dark.filter(Boolean));gtDiffuser(body,probe);
 }
 export function sedanVariant(id,template,basePaint,baseTail,baseWindows){
  const object=template.clone(true),body=object.getObjectByName('Suspended body'),wheel=object.getObjectByName('Cabin wheel');
@@ -345,12 +507,14 @@ export function sedanVariant(id,template,basePaint,baseTail,baseWindows){
  if(id==='yu7gt'){
    // Bake the retracted skin into car-space so it follows the new hatch contour.
    const skin=blade.geometry.clone().translate(...spoiler.position.toArray());body.remove(spoiler);body.add(new T.Mesh(skin,paint));
+   const lightGuide=gtLightGuide(body,tail);
    shapeSUV(body,wheel);
    for(const {hub,spin} of wheelPivots){
      hub.position.x*=1.037;hub.position.y*=1.065;hub.scale.set(1.035,1.065,1.065);
      rimCover(hub,spin,id);
    }
    addGT(body,paint,wheelPivots);
+   body.add(lightGuide);
  }else if(id==='ultra'){
    object.updateMatrixWorld(true);addUltra(body);
  }else{
