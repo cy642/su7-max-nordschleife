@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createContacts,footprint} from '../src/contact.mjs';
+import {driveCar} from '../src/driving.mjs';
 
 const radius=90, lap=2*Math.PI*radius, step=lap/128;
 const track=s=>({x:radius*(1-Math.cos(s/radius)),z:radius*Math.sin(s/radius),
@@ -63,4 +64,33 @@ test('gantry post stops a head-on impact at racing speed',()=>{
   const cars=[car(7,7,73)];
   assert.ok(simulate(cars,80,()=>{},[{s:20,lane:7,length:.19,width:.15}]).wall);
   assert.ok(cars[0].s<19&&cars[0].v<1);
+});
+
+test('a driver can reverse clear of a post and cannot back through another post',()=>{
+  const c={...car(17,7),gear:1,steer:0,yawRate:0,roll:0,pitch:0};
+  const solve=createContacts(track,step,lap,[{s:20,lane:7,length:.19,width:.3},{s:7,lane:7,length:.19,width:.3}]);
+  function drive(seconds,input){
+    let hit=false;
+    for(let i=0;i<seconds*100;i++){
+      driveCar(c,{gas:false,brake:false,steerAxis:0,...input},0,-1/radius,0,.01);
+      hit=solve([c]).wall||hit;
+    }
+    return hit;
+  }
+  assert.ok(drive(1.5,{gas:true}));
+  const frontStop=c.s;
+  assert.ok(drive(4,{brake:true}));
+  assert.ok(c.gear===-1&&c.s<frontStop-3&&c.s>8.8&&Math.abs(c.v)<.1);
+});
+
+test('reversing at full lock along the outside guardrail keeps all four corners inside',()=>{
+  const c={...car(40,6.7,-7,-.24),gear:-1,steer:1,yawRate:0,roll:0,pitch:0};
+  const solve=createContacts(track,step,lap);
+  let hit=false;
+  for(let i=0;i<240;i++){
+    driveCar(c,{gas:false,brake:true,steerAxis:1},0,-1/radius,0,.01);
+    hit=solve([c]).wall||hit;
+    for(const [x,z] of corners(c))assert.ok(Math.hypot(x-radius,z)-radius<8.82);
+  }
+  assert.ok(hit&&c.s<38&&c.v<0);
 });

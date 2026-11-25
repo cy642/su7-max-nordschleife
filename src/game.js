@@ -61,14 +61,16 @@ function audioInit(){
  const src=ctx.createBufferSource();src.buffer=b;src.loop=true;wind=ctx.createBiquadFilter();wind.type='lowpass';windGain=ctx.createGain();windGain.gain.value=0;src.connect(wind).connect(windGain).connect(ctx.destination);src.start();
  tyreFilter=ctx.createBiquadFilter();tyreFilter.type='bandpass';tyreFilter.Q.value=1.3;tyreGain=ctx.createGain();tyreGain.gain.value=0;src.connect(tyreFilter).connect(tyreGain).connect(ctx.destination);
 }
+function brakeLights(){return inputs.handbrake||(player.gear===-1?inputs.gas:inputs.brake);}
+function tractionInput(){return player.gear===-1?inputs.brake:inputs.gas;}
 function audioUpdate(){
  if(!ctx)return;
- const active=soundOn&&state==='race',t=ctx.currentTime,v=player.v;
+ const active=soundOn&&state==='race',t=ctx.currentTime,v=Math.abs(player.v);
  osc.frequency.setTargetAtTime(78+v*7.7,t,.07);lowOsc.frequency.setTargetAtTime(36+v*2.8,t,.08);
- amp.gain.setTargetAtTime(active?(.006+.023*(inputs.gas?1:.3))*Math.min(1,v/5):0,t,.05);
+ amp.gain.setTargetAtTime(active?(.006+.023*(tractionInput()?1:.3))*Math.min(1,v/5):0,t,.05);
  lowGain.gain.setTargetAtTime(active&&v>1?.009:0,t,.07);
  wind.frequency.setTargetAtTime(340+v*22,t,.15);windGain.gain.setTargetAtTime(active?.09*(v/74)**1.4:0,t,.12);
- const scrub=clamp(Math.abs(player.roll||0)*22+(inputs.handbrake?.68:inputs.brake?.24:0),0,1);
+ const scrub=clamp(Math.abs(player.roll||0)*22+(inputs.handbrake?.68:brakeLights()?.24:0),0,1);
  const abrasive=Math.abs(player.lane)>5.55;
  tyreFilter.frequency.setTargetAtTime(abrasive?520:710+v*5.5,t,.12);
  tyreGain.gain.setTargetAtTime(active?Math.min(v/25,1)*(.013+.085*scrub+(abrasive?.07:0)):0,t,.11);
@@ -131,13 +133,13 @@ function dialog(title,html,acts){
 function overlayResume(){state=modeBeforeModal;closeDialog();rafTime=0;audioUpdate();}
 function help(){
  if(!$('modal').hidden||!ready)return;modeBeforeModal=state;state='help';
- dialog('驾驶操作','<div class="rows"><div>加速 / 刹车<b>W / S　或 ↑ / ↓</b></div><div>左转 / 右转<b>A / D　或 ← / →</b></div><div>手刹<b>空格</b></div><div>尾翼 / 切换视角<b>R / C</b></div><div>暂停 / 继续<b>Esc 或 P</b></div></div><p>入弯前先刹车，弯中轻点方向，出弯再加速。急弯可短按手刹帮车头转入。</p><details><summary>车辆与赛道资料</summary><p>2024 Xiaomi SU7 Max 三维模型由 <a href="https://sketchfab.com/3d-models/2024-xiaomi-su7-max-db30dd1e254243b4ba002c6ce65df052" target="_blank" rel="noopener">Ddiaz Design</a> 制作，依 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener">CC BY-NC-SA 4.0</a> 使用。海湾蓝材质和可动尾翼改编亦遵循该许可。<a href="https://s1.xiaomiev.com/activity-outer-assets/0328/env/SU7%E5%8F%82%E6%95%B0%E9%85%8D%E7%BD%AE%E8%A1%A8328.pdf" target="_blank" rel="noopener">小米汽车配置表</a>。</p><p>线路据 <a href="https://github.com/maciejb2k/nurburgring-nordschleife-geojson" target="_blank" rel="noopener">maciejb2k 的北环轨迹</a>，按 <a href="https://nuerburgring.de/info/nuerburgring/records/" target="_blank" rel="noopener">赛道官方全圈长度</a> 标定。高程来自 AWS Terrain Tiles。地面、道路设施及操控按游戏尺度近似制作。</p><p>环境摄影与材质来自 <a href="https://polyhaven.com/a/kloppenheim_03" target="_blank" rel="noopener">Poly Haven</a>（Kloppenheim 03、Asphalt Track、Grass Ground），树木由 <a href="https://opengameart.org/content/high-res-tree-textures" target="_blank" rel="noopener">rubberduck</a> 制作，均为 CC0 素材。</p></details>',[['返回',overlayResume]]);
+ dialog('驾驶操作','<div class="rows"><div>加速 / 刹车<b>W / S　或 ↑ / ↓</b></div><div>倒车<b>停稳后继续按住 S 或 ↓</b></div><div>左转 / 右转<b>A / D　或 ← / →</b></div><div>手刹<b>空格</b></div><div>尾翼 / 切换视角<b>R / C</b></div><div>暂停 / 继续<b>Esc 或 P</b></div></div><p>入弯前先刹车，弯中轻点方向，出弯再加速。急弯可短按手刹帮车头转入。</p><details><summary>车辆与赛道资料</summary><p>2024 Xiaomi SU7 Max 三维模型由 <a href="https://sketchfab.com/3d-models/2024-xiaomi-su7-max-db30dd1e254243b4ba002c6ce65df052" target="_blank" rel="noopener">Ddiaz Design</a> 制作，依 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener">CC BY-NC-SA 4.0</a> 使用。海湾蓝材质和可动尾翼改编亦遵循该许可。<a href="https://s1.xiaomiev.com/activity-outer-assets/0328/env/SU7%E5%8F%82%E6%95%B0%E9%85%8D%E7%BD%AE%E8%A1%A8328.pdf" target="_blank" rel="noopener">小米汽车配置表</a>。</p><p>线路据 <a href="https://github.com/maciejb2k/nurburgring-nordschleife-geojson" target="_blank" rel="noopener">maciejb2k 的北环轨迹</a>，按 <a href="https://nuerburgring.de/info/nuerburgring/records/" target="_blank" rel="noopener">赛道官方全圈长度</a> 标定。高程来自 AWS Terrain Tiles。地面、道路设施及操控按游戏尺度近似制作。</p><p>环境摄影与材质来自 <a href="https://polyhaven.com/a/kloppenheim_03" target="_blank" rel="noopener">Poly Haven</a>（Kloppenheim 03、Asphalt Track、Grass Ground），树木由 <a href="https://opengameart.org/content/high-res-tree-textures" target="_blank" rel="noopener">rubberduck</a> 制作，均为 CC0 素材。</p></details>',[['返回',overlayResume]]);
 }
 bind('help',()=>{
  help();
  if(touchDevice&&state==='help'){
    const rows=$('dialogBody').querySelector('.rows');
-   rows.innerHTML='<div>转向<b>左手按住或横滑方向条</b></div><div>转向幅度<b>靠近中间微调，靠近两端打满</b></div><div>加速 / 刹车 / 手刹<b>右手按住踏板</b></div><div>回正<b>松开方向条</b></div>';
+   rows.innerHTML='<div>转向<b>左手按住或横滑方向条</b></div><div>转向幅度<b>靠近中间微调，靠近两端打满</b></div><div>加速 / 刹车 / 手刹<b>右手按住踏板</b></div><div>倒车<b>停稳后继续按住刹车</b></div><div>回正<b>松开方向条</b></div>';
  }
 });
 function recoverCar(){
@@ -145,7 +147,7 @@ function recoverCar(){
  for(let back=0;back<=96;back+=8)for(const lane of [0,-2.8,2.8]){
    const s=player.s-back, box=footprint(sample,{s,lane});
    if(occupied.some(r=>Math.hypot(r.x-box.x,r.z-box.z)<7))continue;
-   Object.assign(player,{s,lane,h:0,v:0,slip:0,steer:0,yawRate:0,pitch:0,roll:0,contact:0});
+   Object.assign(player,{s,lane,h:0,v:0,gear:1,reverseHold:0,slip:0,steer:0,yawRate:0,pitch:0,roll:0,contact:0});
    remember(player);simAcc=0;camFresh=true;overlayResume();announce('已回到赛道');return;
  }
 }
@@ -175,7 +177,7 @@ function startRace(){
  rivals.length=0;
  for(const car of carPool){car.object.visible=eventType==='race';if(car.object.visible)rivals.push(car);}
  state='countdown';remaining=3;elapsed=0;viewMode=0;alertLife=0;wasOff=false;
- Object.assign(player,{s:eventType==='race'?-42:startDistance,lane:eventType==='race'?2.25:0,v:0,h:0,steer:0,roll:0,pitch:0,yawRate:0,slip:0,finish:null,contact:0});stage.world.add(carRoot);stage.sprintFinish.visible=total<LENGTH;
+ Object.assign(player,{s:eventType==='race'?-42:startDistance,lane:eventType==='race'?2.25:0,v:0,gear:1,reverseHold:0,h:0,steer:0,roll:0,pitch:0,yawRate:0,slip:0,finish:null,contact:0});stage.world.add(carRoot);stage.sprintFinish.visible=total<LENGTH;
  if(stage.sprintFinish.visible)place(stage.sprintFinish,total,0);
  const posts=trackPosts.map(post=>post.sprintOnly?{...post,s:total}:post);
  resolveContacts=createContacts(sample,STEP,LENGTH,posts);simAcc=0;
@@ -255,6 +257,7 @@ function drawMap(){
 }
 function cornerHint(){
  if(state!=='race')return '';
+ if(player.gear===-1)return viewMode>=2?'倒车影像':'倒车';
  const horizon=clamp(player.v*2.7,65,165);
  for(let ahead=20;ahead<=horizon&&player.s+ahead<total;ahead+=15){
    const bend=curvature(player.s+ahead,20),k=Math.abs(bend);
@@ -267,8 +270,9 @@ function cornerHint(){
 function updateHUD(){
  $('metricLabel').textContent=eventType==='race'?'排名 / POS':eventType==='time'?'计时点 / SPLIT':'练习 / SECTOR';
  $('position').textContent=eventType==='race'?rank()+'/6':eventType==='time'?Math.min(splits.length+1,3)+'/3':Math.round(clamp((player.s-startDistance)/(total-startDistance),0,1)*100)+'%';$('clock').textContent=timeString(elapsed);$('remain').textContent=(Math.max(0,total-Math.max(startDistance,player.s))/1000).toFixed(2);
- const braking=inputs.brake||inputs.handbrake;
- $('speed').textContent=Math.round(player.v*3.6);$('power').style.width=(braking?100:inputs.gas?clamp(100-player.v*.48,35,100):9)+'%';$('power').style.background=braking?'#ff956d':'var(--aqua)';
+ const braking=brakeLights(),reverse=player.gear===-1;
+ $('gear').textContent=reverse?'R':'D';$('gear').classList.toggle('reverse',reverse);
+ $('speed').textContent=Math.round(Math.abs(player.v)*3.6);$('power').style.width=(braking?100:tractionInput()?clamp(100-Math.abs(player.v)*.48,35,100):9)+'%';$('power').style.background=braking?'#ff956d':'var(--aqua)';
  $('progress').style.width=clamp((player.s-startDistance)/(total-startDistance)*100,0,100)+'%';
  const sc=section(Math.max(0,player.s));$('sectionName').textContent=sc[1];$('sectionCn').textContent=sc[2];
  const hint=cornerHint();$('cornerHint').hidden=!hint;$('cornerHint').textContent=hint;
@@ -280,9 +284,10 @@ function renderFrame(dt,alpha=1){
  if(inGarage)wing=damp(wing,wingOpen?1:0,4.2,dt);
  model.updateWing(wing);
  const car=present(player,alpha);
- model.cockpit(!inGarage&&viewMode===3);
+ const reversing=!inGarage&&player.gear===-1;
+ model.cockpit(!inGarage&&!reversing&&viewMode===3);
  model.suspension(inGarage?0:car.pitch,inGarage?0:car.roll);
- model.drive(inGarage?0:car.v,inGarage?0:car.steer,state==='race'&&(inputs.brake||inputs.handbrake),state==='race'?dt:0);
+ model.drive(inGarage?0:car.v,inGarage?0:car.steer,state==='race'&&brakeLights(),state==='race'?dt:0,reversing);
  if(inGarage){
   const w=app.clientWidth,h=app.clientHeight;
   const distance=portrait?Math.max(7.0,7.25/eye.aspect):Math.max(6.6,9.5/eye.aspect);
@@ -309,10 +314,14 @@ function renderFrame(dt,alpha=1){
  eye.position.copy(desired);const distance=24;
  look.set(desired.x+dx*distance,desired.y+distance*(Math.tan(viewPitch)-(viewMode===2?.032:viewMode===1?.189:.143)),desired.z+dz*distance);
  eye.lookAt(look);
- const fov=(portrait?(viewMode===2?73:75):(viewMode===2?67:54))+car.v*.068;
+ const fov=(portrait?(viewMode===2?73:75):(viewMode===2?67:54))+Math.abs(car.v)*.068;
  smoothFov=camFresh?fov:damp(smoothFov,fov,3.5,dt);camFresh=false;
  eye.fov=smoothFov;eye.far=1450;eye.near=.12;
- if(viewMode===3){
+ if(reversing&&viewMode>=2){
+   desired.set(0,.86,-2.53).applyQuaternion(carRoot.quaternion).add(carRoot.position);
+   look.set(0,-.11,-1).applyQuaternion(carRoot.quaternion).multiplyScalar(18).add(desired);
+   eye.position.copy(desired);eye.lookAt(look);eye.fov=76;eye.near=.06;
+ }else if(viewMode===3){
    // Seat and camera share the same car pose so the dash stays still through a bend.
    desired.set(.36,1.185,.27).applyQuaternion(carRoot.quaternion).add(carRoot.position);
    look.set(0,-.072,1).applyQuaternion(carRoot.quaternion).multiplyScalar(18).add(desired);
@@ -397,6 +406,6 @@ async function boot(){
    carPool.push({name:carNames[i],object,home:(i%2?1:-1)*(1.5+.22*i)});
  }
  applyGraphics();stage.garage.add(carRoot);ready=true;$('startBtn').disabled=false;$('startLabel').textContent='开始比赛';showWing();garage();frame(performance.now());
- if(location.search.includes('qa=1'))window.__qa={state:()=>({state,s:player.s,lane:player.lane,heading:player.h,speed:player.v,wing,wingOpen,rank:rank(),total,elapsed,eventType,difficulty,sector,startDistance,splits:[...splits],rivals:rivals.map(r=>({s:r.s,v:r.v,finish:r.finish})),viewMode}),advance:(seconds)=>{for(let i=0;i<seconds/PHYSICS_DT;i++)step(PHYSICS_DT);updateHUD();},info:()=>renderer.info.render,render:()=>renderFrame(1/60)};
+ if(location.search.includes('qa=1'))window.__qa={state:()=>({state,s:player.s,lane:player.lane,heading:player.h,speed:player.v,gear:player.gear??1,wing,wingOpen,rank:rank(),total,elapsed,eventType,difficulty,sector,startDistance,splits:[...splits],rivals:rivals.map(r=>({s:r.s,v:r.v,finish:r.finish})),viewMode}),advance:(seconds)=>{for(let i=0;i<seconds/PHYSICS_DT;i++)step(PHYSICS_DT);updateHUD();},info:()=>renderer.info.render,render:()=>renderFrame(1/60)};
 }
 boot().catch(e=>{console.error(e);$('error').hidden=false;$('error').innerHTML='<p>三维画面未能启动。请用支持 WebGL 的新版 Chrome、Edge 或 Safari 打开，并启用图形加速。</p><button class="small" onclick="location.reload()">重新载入</button>';});

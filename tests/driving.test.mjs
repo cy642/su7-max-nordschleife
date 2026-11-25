@@ -46,3 +46,31 @@ test('brakes override the accelerator, and the handbrake tightens a moving turn'
   assert.ok(pivot.h > ordinary.h && pivot.v < ordinary.v && braking.v < pivot.v);
   assert.equal(run(fresh(0), 1, {gas:true, handbrake:true, steerAxis:1}).lane, 0);
 });
+
+test('reverse requires holding the brake after stopping; gas stops reverse before driving forward', () => {
+  const car = run(fresh(3), .4, {brake:true});
+  assert.equal(car.v, 0);
+  assert.equal(car.gear, 1);
+  run(car, .1, {}); // a released pedal cancels the pending shift
+  run(car, .34, {brake:true});
+  assert.equal(car.v, 0);
+  const stoppedAt = car.s;
+  run(car, 2.5, {brake:true});
+  assert.equal(car.gear, -1);
+  assert.equal(car.v, -7);
+  assert.ok(car.s < stoppedAt);
+  run(car, .5, {});
+  assert.ok(car.v > -7 && car.v < 0);
+  while (car.v < 0) run(car, .01, {gas:true});
+  assert.equal(car.v, 0);
+  run(car, .1, {gas:true});
+  assert.ok(car.gear === 1 && car.v > 0);
+});
+
+test('backing with right lock turns the nose left and moves the rear right', () => {
+  const right = run(fresh(0), 1.5, {steerAxis:1, brake:true});
+  const left = run(fresh(0), 1.5, {steerAxis:-1, brake:true});
+  assert.ok(right.h < 0 && right.lane > .15);
+  assert.equal(right.lane, -left.lane);
+  assert.equal(right.h, -left.h);
+});

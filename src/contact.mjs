@@ -1,3 +1,5 @@
+import {MAX_REVERSE_SPEED} from './driving.mjs';
+
 // All contact tests use the same world-space heading and centre as the rendered car.
 // The small clearance includes mirror tips, suspension movement and interpolation.
 const HALF_LENGTH = 2.56, HALF_WIDTH = 1.17;
@@ -43,7 +45,8 @@ export function createContacts(sample,step,lap,posts=[]) {
     const scale=Math.max(.45,(b.tx*(c.x-a.x-(c.tz-a.tz)*car.lane)+b.tz*(c.z-a.z+(c.tx-a.tx)*car.lane))/.20);
     const forward=(nx*b.tx+nz*b.tz)/scale, sideways=-nx*b.tz+nz*b.tx;
     car.s+=distance*forward; car.lane+=distance*sideways;
-    car.v=Math.max(0,Math.min(76,car.v+velocity*forward));
+    const nextSpeed=car.v+velocity*forward;
+    car.v=car.gear===-1?Math.max(-MAX_REVERSE_SPEED,Math.min(0,nextSpeed)):Math.max(0,Math.min(76,nextSpeed));
     car.slip+=velocity*sideways;
   }
   const speed=(car,b,nx,nz)=>(nx*b.tx+nz*b.tz)*car.v*Math.cos(car.h||0)+(-nx*b.tz+nz*b.tx)*car.slip;

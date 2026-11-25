@@ -100,14 +100,14 @@ export async function carModel(base64){
  body.add(handwheel);
  const dashMap=texture(512,120,()=>{}),dash=dashMap.image.getContext('2d');
  const dashMat=new T.MeshBasicMaterial({map:dashMap,side:T.DoubleSide,toneMapped:false,polygonOffset:true,polygonOffsetFactor:-1});
- let lastReadout=-1;
- function updateCluster(v){
-   const kph=Math.round(v*3.6);if(lastReadout===kph)return;lastReadout=kph;
+ let lastReadout=null,lastReverse=false;
+ function updateCluster(v,reverse=false){
+   const kph=Math.round(Math.abs(v)*3.6);if(lastReadout===kph&&lastReverse===reverse)return;lastReadout=kph;lastReverse=reverse;
    dash.fillStyle='#111c24';dash.fillRect(0,0,512,120);
    dash.fillStyle='#59ded7';dash.fillRect(10,105,490*Math.min(1,kph/265),4);
    dash.textAlign='center';dash.textBaseline='middle';dash.fillStyle='#f4f8fa';dash.font='bold 77px Arial';dash.fillText(String(kph),253,50);
    dash.fillStyle='#a8b6bb';dash.font='18px Arial';dash.fillText('km/h',253,92);
-   dash.font='bold 28px Arial';dash.fillStyle='#76e6d5';dash.fillText('D',51,51);dash.font='20px Arial';dash.fillText('AWD',446,52);
+   dash.font='bold 28px Arial';dash.fillStyle=reverse?'#ffcb8e':'#76e6d5';dash.fillText(reverse?'R':'D',51,51);dash.font='20px Arial';dash.fillText('AWD',446,52);
    dashMap.needsUpdate=true;
  }
  updateCluster(0);
@@ -173,8 +173,8 @@ export async function carModel(base64){
  }
  return {object:geometryGroup,makeOpponent,makeDistant,cockpit(enabled){for(const w of windows)w.opacity=enabled?.025:.87;},suspension(pitch,roll){
     body.rotation.set(pitch,0,roll,'YXZ');
- },drive(speed,steering,brake,dt){
-    updateCluster(speed);handwheel.quaternion.setFromAxisAngle(steeringAxis,steering*(1.25-.65*Math.min(1,speed/65)));
+ },drive(speed,steering,brake,dt,reverse=false){
+    updateCluster(speed,reverse);handwheel.quaternion.setFromAxisAngle(steeringAxis,steering*(1.25-.65*Math.min(1,Math.abs(speed)/65)));
     for(const w of wheelPivots){w.spin.rotation.x+=speed*dt/.351;if(w.front)w.hub.rotation.y=-steering*.34;}
     tail.emissiveIntensity=brake?2.0:.55;
  },updateWing};
