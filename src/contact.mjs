@@ -1,4 +1,5 @@
 import {MAX_REVERSE_SPEED} from './driving.mjs';
+import {getVehicle, VEHICLES} from './vehicles.mjs';
 
 // All contact tests use the same world-space heading and centre as the rendered car.
 // The small clearance includes mirror tips, suspension movement and interpolation.
@@ -6,16 +7,19 @@ const HALF_LENGTH = 2.56, HALF_WIDTH = 1.17;
 const radius = (b, x, z) => b.length * Math.abs(b.fx*x + b.fz*z)
                             + b.width * Math.abs(b.rx*x + b.rz*z);
 
-export function footprint(sample, car, length=HALF_LENGTH, width=HALF_WIDTH) {
+export function footprint(sample, car, length, width) {
+  const vehicle=getVehicle(car.vehicleId);
+  length ??= HALF_LENGTH+(vehicle.length-VEHICLES.max.length)*.5;
+  width ??= HALF_WIDTH+(vehicle.width-VEHICLES.max.width)*.5;
   const p=sample(car.s), c=Math.cos(car.h||0), s=Math.sin(car.h||0);
   const fx=p.tx*c-p.tz*s, fz=p.tz*c+p.tx*s;
   return {x:p.x-p.tz*car.lane, z:p.z+p.tx*car.lane, y:p.y??0, fx, fz, rx:-fz, rz:fx,
-    length, width, tx:p.tx, tz:p.tz};
+    length,width,bound:Math.hypot(length,width),tx:p.tx,tz:p.tz};
 }
 
 export function contact(a,b) {
   const dx=b.x-a.x, dz=b.z-a.z;
-  if (dx*dx+dz*dz>33 || Math.abs(a.y-b.y)>2.4) return null;
+  if (dx*dx+dz*dz>(a.bound+b.bound)**2 || Math.abs(a.y-b.y)>2.4) return null;
   let depth=Infinity, nx=0, nz=0;
   for (const [x,z] of [[a.fx,a.fz],[a.rx,a.rz],[b.fx,b.fz],[b.rx,b.rz]]) {
     const delta=dx*x+dz*z, overlap=radius(a,x,z)+radius(b,x,z)-Math.abs(delta);
@@ -46,7 +50,8 @@ export function createContacts(sample,step,lap,posts=[]) {
     const forward=(nx*b.tx+nz*b.tz)/scale, sideways=-nx*b.tz+nz*b.tx;
     car.s+=distance*forward; car.lane+=distance*sideways;
     const nextSpeed=car.v+velocity*forward;
-    car.v=car.gear===-1?Math.max(-MAX_REVERSE_SPEED,Math.min(0,nextSpeed)):Math.max(0,Math.min(76,nextSpeed));
+    const contactLimit=Math.max(76,getVehicle(car.vehicleId).topSpeed/3.6);
+    car.v=car.gear===-1?Math.max(-MAX_REVERSE_SPEED,Math.min(0,nextSpeed)):Math.max(0,Math.min(contactLimit,nextSpeed));
     car.slip+=velocity*sideways;
   }
   const speed=(car,b,nx,nz)=>(nx*b.tx+nz*b.tz)*car.v*Math.cos(car.h||0)+(-nx*b.tz+nz*b.tx)*car.slip;

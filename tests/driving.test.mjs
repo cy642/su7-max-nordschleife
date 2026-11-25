@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {driveCar} from '../src/driving.mjs';
+import {getVehicle, VEHICLES} from '../src/vehicles.mjs';
 
 const fresh = (v = 20) => ({v, lane:0, h:0, slip:0, steer:0, yawRate:0, pitch:0, roll:0, s:0});
 function run(car, seconds, input, bend = 0) {
@@ -9,6 +10,37 @@ function run(car, seconds, input, bend = 0) {
   }
   return car;
 }
+
+test('each garage selection reaches its launch target and its own top speed on a flat straight', () => {
+  for (const vehicle of Object.values(VEHICLES)) {
+    const c = {...fresh(0), vehicleId:vehicle.id};
+    let launchTime;
+    for (let tick = 1; tick <= 18000; tick++) {
+      driveCar(c, {gas:true, brake:false, steerAxis:0}, 0, 0, 0, .01);
+      if (launchTime === undefined && c.v >= 100 / 3.6) launchTime = tick / 100;
+    }
+    assert.ok(Math.abs(launchTime - vehicle.zeroTo100) < .035, vehicle.id);
+    assert.ok(Math.abs(c.v * 3.6 - vehicle.topSpeed) < .02, vehicle.id);
+  }
+});
+
+test('legacy saves drive exactly like the Max; only its adjustable wing responds to input', () => {
+  assert.equal(getVehicle('__proto__'), VEHICLES.max);
+  for (const vehicle of Object.values(VEHICLES)) {
+    const a = {...fresh(60), vehicleId:vehicle.id}, b = {...a}, legacy = fresh(60);
+    for (let i = 0; i < 35; i++) {
+      const input = {steerAxis:.65, gas:true, brake:false};
+      driveCar(a, input, 0, .003, 0, .01);
+      driveCar(b, input, 0, .003, 1, .01);
+      driveCar(legacy, input, 0, .003, 0, .01);
+    }
+    if (vehicle.wing === 'active') {
+      assert.equal(legacy.lane, a.lane);
+      assert.equal(legacy.v, a.v);
+      assert.ok(b.v < a.v && b.lane > a.lane);
+    } else assert.deepEqual(b, a);
+  }
+});
 
 test('a short steering press changes lanes promptly and settles after release', () => {
   const right = run(fresh(), .5, {steerAxis:1});
@@ -113,3 +145,13 @@ for (const kph of [120, 180, 220]) {
     }
   });
 }
+
+
+test('auto hold preserves the zero-speed start on the sloping Nordschleife grid', () => {
+  const car=fresh(0);
+  const coast={gas:false,brake:false,handbrake:false,steerAxis:0};
+  for(let i=0;i<100;i++)driveCar(car,coast,-.105,0,0,.01);
+  assert.equal(car.v,0);
+  driveCar(car,{...coast,gas:true},-.105,0,0,.01);
+  assert.ok(car.v>0);
+});

@@ -1,3 +1,5 @@
+import {getVehicle} from './vehicles.mjs';
+
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const mix = (a, b, t) => a + (b - a) * t;
 const damp = (a, b, rate, dt) => mix(a, b, -Math.expm1(-rate * dt));
@@ -7,7 +9,7 @@ function smoothstep(min, max, value) {
 }
 
 export const MAX_REVERSE_SPEED = 7;
-function updateSpeed(car, input, grade, shoulder, wing, dt) {
+function updateSpeed(car, input, grade, shoulder, wing, vehicle, dt) {
   const brake = Number(input.brake);
   const handbrake = Number(input.handbrake || 0);
   const throttle = brake || handbrake ? 0 : Number(input.gas);
@@ -24,21 +26,26 @@ function updateSpeed(car, input, grade, shoulder, wing, dt) {
     else if (brake) acceleration = -4.2 * (1 - shoulder * .36) - grade * 9.81;
     return clamp(oldSpeed + acceleration * dt, -MAX_REVERSE_SPEED, 0);
   }
-  const drive = Math.min(10.55, 226 / Math.max(1, oldSpeed));
+  // Hold the standing start on a gradient until the driver commands movement.
+  if (oldSpeed === 0 && !throttle) return 0;
+  const setup = vehicle.physics;
+  const drive = Math.min(setup.launch, setup.specificPower / Math.max(1, oldSpeed));
   const regen = throttle || brake || handbrake ? 0 : 1.15 * smoothstep(0, 7, oldSpeed);
-  const drag = (.00030 + wing * .000075) * oldSpeed ** 2 + .14 + grade * 9.81;
-  const braking = Math.max(brake * mix(13.9, 6.1, shoulder), handbrake * mix(7.6, 4.8, shoulder));
+  const drag = (setup.drag + wing * .000075) * oldSpeed ** 2 + .14 + grade * 9.81;
+  const braking = Math.max(brake * mix(setup.brakes, 6.1, shoulder), handbrake * mix(7.6, 4.8, shoulder));
   const acc = drive * throttle * (1 - shoulder * .33) - braking - regen - drag
     - shoulder * (1.6 + .0028 * oldSpeed ** 2);
-  return clamp(oldSpeed + dt * acc, 0, (265 - wing * 4) / 3.6);
+  return clamp(oldSpeed + dt * acc, 0, (vehicle.topSpeed - wing * 4) / 3.6);
 }
 
 // Distance along the road and speed are signed. Positive lane and heading turn right.
-export function driveCar(car, input, grade, bend, wing, dt) {
-  const shoulder = smoothstep(5.25, 6.55, Math.abs(car.lane));
+export function driveCar(car, input, grade, bend, wing, dt, pavedRunway=false) {
+  const vehicle = getVehicle(car.vehicleId);
+  const activeWing = vehicle.wing === 'active' ? wing : 0;
+  const shoulder = pavedRunway ? 0 : smoothstep(5.25, 6.55, Math.abs(car.lane));
   const handbrake = Number(input.handbrake || 0);
   const oldSpeed = car.v;
-  const v = car.v = updateSpeed(car, input, grade, shoulder, wing, dt);
+  const v = car.v = updateSpeed(car, input, grade, shoulder, activeWing, vehicle, dt);
   const speed = Math.abs(v), acc = (v - oldSpeed) / dt;
 
   const axis = clamp(input.steerAxis, -1, 1);
@@ -50,7 +57,8 @@ export function driveCar(car, input, grade, bend, wing, dt) {
   const steerRate = axis === 0 || countersteer ? 24 + 12 * roadResponse : mix(18, 10, highSpeed) + 16 * roadResponse;
   car.steer = damp(car.steer, axis, steerRate, dt);
 
-  const grip = mix(12.8 + wing * 2.4 * (v / 74) ** 2, 5.45, shoulder);
+  const setup = vehicle.physics;
+  const grip = mix(setup.grip + (setup.aeroGrip + activeWing * 2.4) * (v / 74) ** 2, 5.45, shoulder);
   const cornerGrip = grip * Math.sqrt(1 - .47 * Math.min(.98, Math.abs(acc) / 16) ** 2);
   // At walking pace the wheel angle sets the radius. At speed tyre grip caps yaw.
   const steeringGain = mix(1.82, 1.42, highSpeed) + .22 * roadResponse;
@@ -71,7 +79,7 @@ export function driveCar(car, input, grade, bend, wing, dt) {
   car.lane += car.slip * dt;
   car.s += Math.cos(car.h) * v * dt;
   const lateralAcc = (bend * v + (car.h - previousHeading) / dt) * v;
-  car.roll = damp(car.roll, -clamp(lateralAcc, -15, 15) * .0021, 6.3, dt);
+  car.roll = damp(car.roll, -clamp(lateralAcc, -15, 15) * .0021 * setup.rollScale, 6.3, dt);
   car.pitch = damp(car.pitch, -clamp((v - oldSpeed) / dt, -14, 11) * .0022, 5.8, dt);
   return shoulder > .52;
 }

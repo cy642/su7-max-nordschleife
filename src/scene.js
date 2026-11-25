@@ -7,6 +7,8 @@ import course from './course.json' with {type:'json'};
 import photographs from './scenery-data.js';
 import cabinParts from './cabin.json';
 import {buildRoadTerrain} from './terrain.mjs';
+import {sedanVariant} from './vehicle-bodies.js';
+import {createVisionGT} from './vision-gt.js';
 
 import {LENGTH,N,STEP,mod,pts,sample,curvature} from './track.mjs';
 export {LENGTH,N,STEP,sample,curvature};
@@ -105,19 +107,19 @@ export async function carModel(base64){
  const scale=4.997/size.z;
  const byMaterial=new Map(),wheelParts=new Map(),wheelPivots=[],body=new T.Group(),windows=new Set();
  let deckPanel;
- geometryGroup.add(body);
+ body.name='Suspended body';geometryGroup.add(body);
  const handwheel=new T.Group(),steeringAxis=new T.Vector3(0,-.34,.94).normalize();
- body.add(handwheel);
+ handwheel.name='Cabin wheel';body.add(handwheel);
  const dashMap=texture(512,120,()=>{}),dash=dashMap.image.getContext('2d');
  const dashMat=new T.MeshBasicMaterial({map:dashMap,side:T.DoubleSide,toneMapped:false,polygonOffset:true,polygonOffsetFactor:-1});
- let lastReadout=null,lastReverse=false;
+ let lastReadout=null,lastReverse=false,selected='max';
  function updateCluster(v,reverse=false){
    const kph=Math.round(Math.abs(v)*3.6);if(lastReadout===kph&&lastReverse===reverse)return;lastReadout=kph;lastReverse=reverse;
    dash.fillStyle='#111c24';dash.fillRect(0,0,512,120);
    dash.fillStyle='#59ded7';dash.fillRect(10,105,490*Math.min(1,kph/265),4);
    dash.textAlign='center';dash.textBaseline='middle';dash.fillStyle='#f4f8fa';dash.font='bold 77px Arial';dash.fillText(String(kph),253,50);
    dash.fillStyle='#a8b6bb';dash.font='18px Arial';dash.fillText('km/h',253,92);
-   dash.font='bold 28px Arial';dash.fillStyle=reverse?'#ffcb8e':'#76e6d5';dash.fillText(reverse?'R':'D',51,51);dash.font='20px Arial';dash.fillText('AWD',446,52);
+   dash.font='bold 28px Arial';dash.fillStyle=reverse?'#ffcb8e':'#76e6d5';dash.fillText(reverse?'R':'D',51,51);dash.font='20px Arial';dash.fillText(selected==='su7'?'RWD':'AWD',446,52);
    dashMap.needsUpdate=true;
  }
  updateCluster(0);
@@ -135,8 +137,17 @@ export async function carModel(base64){
   const instrument=cabinParts[meshIndex];
   if(instrument){
    const wheelIDs=new Set(instrument.wheel),screenIDs=new Set(instrument.screen);
-   const fixed=[],wheelFaces=[],screenFaces=[],idx=geom.index.array;
-   for(let i=0;i<idx.length;i+=3){const group=wheelIDs.has(idx[i])?wheelFaces:screenIDs.has(idx[i])?screenFaces:fixed;group.push(idx[i],idx[i+1],idx[i+2]);}
+   const fixed=[],wheelFaces=[],screenFaces=[],mediaFaces=[],idx=geom.index.array;
+   for(let i=0;i<idx.length;i+=3){const group=wheelIDs.has(idx[i])?wheelFaces:screenIDs.has(idx[i])?screenFaces:meshIndex===36&&idx[i]>=1695&&idx[i]<=1706?mediaFaces:fixed;group.push(idx[i],idx[i+1],idx[i+2]);}
+   if(mediaFaces.length){
+     const geometry=new T.BufferGeometry();
+     for(const [name,size] of [['position',3],['normal',3],['uv',2]]){
+       const a=geom.getAttribute(name),values=[];
+       for(const i of mediaFaces){values.push(a.getX(i),a.getY(i));if(size===3)values.push(a.getZ(i));}
+       geometry.setAttribute(name,new T.Float32BufferAttribute(values,size));
+     }
+     const media=new T.Mesh(geometry,m);media.name='Media screen';body.add(media);
+   }
    if(wheelFaces.length){
     const pivot=new T.Vector3(.414,.747,.407).applyMatrix4(o.matrixWorld).sub(new T.Vector3(center.x,box3.min.y,center.z)).multiplyScalar(scale);
     handwheel.position.copy(pivot);
@@ -167,14 +178,16 @@ export async function carModel(base64){
  for(const [original,parts] of wheelParts){
    const hub=new T.Group(),spin=new T.Group(),bounds=new T.Box3();parts.forEach(part=>bounds.expandByObject(part,true));
    const pivot=bounds.getCenter(new T.Vector3());hub.position.copy(pivot);for(const part of parts){part.position.copy(pivot).negate();spin.add(part);}
-   hub.add(spin);geometryGroup.add(hub);wheelPivots.push({hub,spin,front:original.name.includes('Front')});
+   const front=original.name.includes('Front');hub.userData.roadWheel=true;hub.userData.front=front;
+   hub.add(spin);geometryGroup.add(hub);wheelPivots.push({hub,spin,front});
  }
  const spoiler=makeSpoiler(deckPanel,paint);body.add(spoiler);
  const updateWing=animateSpoiler(spoiler);
  geometryGroup.add(softShadow(3.28,6.48));
+ const rivalCluster=basic(0x182935);
  function makeOpponent(tint){
    const clone=geometryGroup.clone(true),newPaint=paint.clone(),rivalTail=tail.clone();newPaint.color.setHex(tint);
-   clone.traverse(o=>{if(o.isMesh&&o.material===paint)o.material=newPaint;else if(o.isMesh&&o.material===tail)o.material=rivalTail;else if(o.isMesh&&windows.has(o.material))o.material=o.material.clone();});
+   clone.traverse(o=>{if(o.isMesh&&o.material===paint)o.material=newPaint;else if(o.isMesh&&o.material===tail)o.material=rivalTail;else if(o.isMesh&&o.material===dashMat)o.material=rivalCluster;else if(o.isMesh&&windows.has(o.material))o.material=o.material.clone();});
    clone.userData.setWing=animateSpoiler(clone.getObjectByName(spoiler.name));return clone;
  }
  // Keep the wing out of the static LOD body so it cannot appear twice.
@@ -185,13 +198,43 @@ export async function carModel(base64){
    aero.getObjectByName('Active rear spoiler').material=shell.material;
    clone.add(aero);clone.userData.setWing=animateSpoiler(aero);return clone;
  }
- return {object:geometryGroup,makeOpponent,makeDistant,cockpit(enabled){for(const w of windows)w.opacity=enabled?.025:.87;},suspension(pitch,roll){
-    body.rotation.set(pitch,0,roll,'YXZ');
- },drive(speed,steering,brake,dt,reverse=false){
-    updateCluster(speed,reverse);handwheel.quaternion.setFromAxisAngle(steeringAxis,steering*(1.25-.65*Math.min(1,Math.abs(speed)/65)));
-    for(const w of wheelPivots){w.spin.rotation.x+=speed*dt/.351;if(w.front)w.hub.rotation.y=-steering*.34;}
-    tail.emissiveIntensity=brake?2.0:.55;
- },updateWing};
+ const root=new T.Group(),models=new Map();
+ // Clone from a neutral pose even if another car is selected mid-session.
+ const template=geometryGroup.clone(true);
+ const max={object:geometryGroup,body,handwheel,windows,wheelPivots,tail};
+ let active=max;models.set('max',max);root.add(geometryGroup);
+ const sedanSeat=V(.36,1.185,.27),suvSeat=V(.36,1.30,.115);
+ const sedanHood=V(0,1.18,1.02),suvHood=V(0,1.31,1.07);
+ const sedanBack=V(0,.86,-2.53),suvBack=V(0,1.02,-2.55);
+ function setVehicle(id){
+   if(id===selected)return;
+   if(!['su7','max','ultra','yu7gt','visiongt'].includes(id))return;
+   if(!models.has(id))models.set(id,id==='visiongt'?createVisionGT():sedanVariant(id,template,paint,tail,windows));
+   root.remove(active.object);active=models.get(id);selected=id;root.add(active.object);
+   lastReadout=null;
+ }
+ return {object:root,makeOpponent,makeDistant,setVehicle,
+   cockpitEye:()=>selected==='visiongt'?active.cockpitEye():selected==='yu7gt'?suvSeat:sedanSeat,
+   hoodEye:()=>selected==='visiongt'?active.hoodEye():selected==='yu7gt'?suvHood:sedanHood,
+   rearEye:()=>selected==='visiongt'?active.rearEye():selected==='yu7gt'?suvBack:sedanBack,
+   cockpit(enabled){
+     if(selected==='visiongt'){active.cockpit(enabled);return;}
+     active.inCockpit=enabled;
+     for(const w of active.windows)w.opacity=enabled?.025:.87;
+   },
+   suspension(pitch,roll){
+     if(selected==='visiongt'){active.suspension(pitch,roll);return;}
+     active.body.rotation.set(pitch,0,roll,'YXZ');
+   },
+   drive(speed,steering,brake,dt,reverse=false){
+     if(selected==='visiongt'){active.drive(speed,steering,brake,dt,reverse);return;}
+     updateCluster(speed,reverse);if(active.inCockpit)active.updateMedia?.(speed,reverse);
+     active.handwheel.quaternion.setFromAxisAngle(steeringAxis,steering*(1.25-.65*Math.min(1,Math.abs(speed)/65)));
+     for(const w of active.wheelPivots){w.spin.rotation.x+=speed*dt/(selected==='yu7gt'?.374:.351);if(w.front)w.hub.rotation.y=-steering*.34;}
+     active.tail.emissiveIntensity=brake?2.0:.55;
+   },
+   updateWing(t){if(selected==='max')updateWing(t);else if(selected==='visiongt')active.updateWing(t);}
+ };
 }
 function exteriorLod(source,paint,tail){
  // Cluster the original exterior to preserve its silhouette when an AI car recedes.

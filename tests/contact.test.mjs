@@ -7,6 +7,18 @@ const radius=90, lap=2*Math.PI*radius, step=lap/128;
 const track=s=>({x:radius*(1-Math.cos(s/radius)),z:radius*Math.sin(s/radius),
   tx:Math.sin(s/radius),tz:Math.cos(s/radius)});
 const car=(s,lane=0,v=0,h=0)=>({s,lane,v,h,slip:0});
+test('model dimensions govern footprint, and a parallel rub does not cap a fast Ultra at Max speed', () => {
+  const straight=s=>({x:0,z:s,tx:0,tz:1});
+  const ultra={...car(100,0,94),vehicleId:'ultra'};
+  const max={...car(100,2.30,73),vehicleId:'max'};
+  const suv={...max,vehicleId:'yu7gt'};
+  assert.ok(footprint(straight,ultra).length > footprint(straight,max).length);
+  assert.ok(footprint(straight,suv).width > footprint(straight,max).width);
+  const solve=createContacts(straight,5,1000);
+  assert.ok(solve([ultra,max]).touched);
+  assert.equal(ultra.v,94);
+  assert.equal(max.v,73);
+});
 function corners(c) {
   const b=footprint(track,c);
   return [[1,1],[-1,1],[-1,-1],[1,-1]].map(([f,r])=>[
