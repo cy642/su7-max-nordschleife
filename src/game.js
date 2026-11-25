@@ -17,6 +17,16 @@ import {createTestDriveControls} from './test-drive-controls.js';
 import {getVehicle,VEHICLES} from './vehicles.mjs';
 import modelBytes from './model-data.js';
 const $=id=>document.getElementById(id),clamp=T.MathUtils.clamp,lerp=T.MathUtils.lerp;
+function showAppUpdate(info){
+ if(!info?.current)return;
+ const link=$('appUpdate');
+ link.hidden=false;
+ link.textContent=info.available?'更新到 '+info.available:'检查更新';
+ link.title='当前版本 '+info.current;
+ link.classList.toggle('available',Boolean(info.available));
+}
+window.addEventListener('nordrun-update',event=>showAppUpdate(event.detail));
+showAppUpdate(window.nordrunUpdate);
 const touchDevice=matchMedia('(any-pointer: coarse)').matches||navigator.maxTouchPoints>0;
 if(touchDevice)document.documentElement.classList.add('touch-device');
 const graphicsProfiles={

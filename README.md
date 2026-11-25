@@ -2,7 +2,9 @@
 
 [打开游戏](https://cy642.github.io/su7-max-nordschleife/)
 
-[下载安卓横屏版 APK](https://github.com/cy642/su7-max-nordschleife/releases/download/android-v1.5.0/Nordrun-1.5.0.apk)
+[下载安卓横屏版 APK](https://github.com/cy642/su7-max-nordschleife/releases/download/android-v1.6.0/Nordrun-1.6.0.apk)
+
+**安卓更新**　1.5.0 及更早版本需要先下载一次上方的 APK，直接覆盖安装。自 1.6.0 起，打开或返回游戏会定期检查正式版，有新版本时车库右下角会显示「更新到 …」。也可随时点「检查更新」，查看版本说明后下载，并在安卓安装界面点「更新」。首次从游戏内安装时，按手机提示允许「北环竞速」安装应用，再返回继续。覆盖安装会保留原有车型选择、赛道和成绩。
 
 在车库点车名或「换车」，可以选择 SU7 标准版、SU7 Max、YU7 GT、SU7 Ultra 或 Vision GT。车辆选择会保存在当前设备。历史版本的成绩保留在 SU7 Max 名下。车库点「看座舱」即可从驾驶席观察仪表和方向盘。
 
@@ -54,3 +56,5 @@ node --test
 发布文件是根目录的 `index.html`。车模、环境和线路数据的来源见[素材署名](CREDITS.md)。
 
 构建安卓包需 JDK 17、Android SDK Platform 35 和 Build Tools 35.0.0。设置 `JAVA_HOME`、`ANDROID_HOME`、`NORDRUN_KEYSTORE` 和 `NORDRUN_KEY_PASSWORD`，使用别名为 `nordrun` 的签名密钥，在网页构建完成后执行 `python android/build.py Nordrun.apk`。
+
+**发布应用内更新**　为新版本提高 `android/build.py` 中的 `versionCode` 和三段式 `versionName`，用原发布密钥签名。在本仓库创建标签为 `android-vX.Y.Z` 的 GitHub 正式发行版，附上 `Nordrun-X.Y.Z.apk` 并设为 Latest。发布说明会显示在玩家的更新窗口。可先在草稿中上传完整 APK，再公开发行版。

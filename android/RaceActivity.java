@@ -15,8 +15,9 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 
 public final class RaceActivity extends Activity {
-    private static final String GAME = "https://appassets.androidplatform.net/game/index.html";
+    static final String GAME = "https://appassets.androidplatform.net/game/index.html";
     private WebView game;
+    private UpdateController updates;
 
     private void immersive() {
         getWindow().getDecorView().setSystemUiVisibility(
@@ -41,7 +42,11 @@ public final class RaceActivity extends Activity {
         game.getSettings().setUseWideViewPort(true);
         game.getSettings().setAllowFileAccess(false);
         game.getSettings().setAllowContentAccess(false);
+        updates = new UpdateController(this, game, state);
         game.setWebViewClient(new WebViewClient() {
+            @Override public void onPageFinished(WebView view, String url) {
+                if (GAME.equals(url)) updates.publishVersion();
+            }
             @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 if (GAME.equals(request.getUrl().toString())) {
                     try {
@@ -57,6 +62,10 @@ public final class RaceActivity extends Activity {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
                 if (GAME.equals(uri.toString())) return false;
+                if ("nordrun://update/check".equals(uri.toString())) {
+                    if (request.hasGesture() && request.isForMainFrame() && GAME.equals(view.getUrl())) updates.open();
+                    return true;
+                }
                 if (request.hasGesture() && request.isForMainFrame() && "https".equals(uri.getScheme())) {
                     try { startActivity(new Intent(Intent.ACTION_VIEW, uri)); } catch (ActivityNotFoundException ignored) {}
                 }
@@ -77,13 +86,22 @@ public final class RaceActivity extends Activity {
         });
     }
     @Override protected void onPause() {
+        updates.pause();
         game.evaluateJavascript("window.dispatchEvent(new Event('blur'))", null);
         game.onPause(); super.onPause();
     }
     @Override protected void onResume() {
-        super.onResume(); game.onResume(); immersive();
+        super.onResume(); game.onResume(); immersive(); updates.resume();
+    }
+    @Override protected void onSaveInstanceState(Bundle state) {
+        super.onSaveInstanceState(state);
+        updates.saveState(state);
+    }
+    @Override protected void onActivityResult(int request, int result, Intent data) {
+        super.onActivityResult(request, result, data);
+        updates.activityResult(request, result);
     }
     @Override protected void onDestroy() {
-        game.destroy(); super.onDestroy();
+        updates.destroy(); game.destroy(); super.onDestroy();
     }
 }
