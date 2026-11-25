@@ -48,16 +48,39 @@ header{position:absolute;z-index:5;left:3.4%;right:3.4%;top:max(22px,env(safe-ar
  .touch-device .garageInfo{top:54px}.touch-device .garageInfo .stats{display:none}
  .touch-device .racing .mapbox{width:84px}.touch-device #mini{height:30px}
 }
+/* The rail is continuous so a thumb can unwind the steering without lifting. */
+.touch-device .touch{display:flex;align-items:end}
+#steerPad{--wheel-pos:50%;position:relative;display:flex;align-items:center;justify-content:space-between;width:clamp(108px,22vw,214px);height:clamp(50px,15vh,82px);padding:0 8px;border:1px solid #93b1bb85;border-radius:14px;background:#10252fdc;color:#e5f2f1;pointer-events:auto;touch-action:none;user-select:none;cursor:ew-resize}
+#steerPad:before{content:"";position:absolute;left:8%;right:8%;top:50%;border-top:2px solid #98bbbc75}
+#steerPad:after{content:"";position:absolute;left:var(--wheel-pos);top:50%;transform:translate(-50%,-50%);width:13px;height:28px;border-radius:5px;background:var(--aqua);box-shadow:0 1px 5px #10273088;pointer-events:none}
+#steerPad span{z-index:1;font-size:13px;text-shadow:0 1px 3px #172730}
+#steerPad:focus-visible{outline:2px solid var(--aqua)}
+.touch-device .touch [data-key=handbrake]{width:clamp(44px,7vw,70px);min-width:44px;height:clamp(44px,13vh,64px);font-size:13px}
+.race-options{display:flex;gap:8px;margin-bottom:8px}.race-options label,#sectorField{display:grid;flex:1;gap:3px;color:#b9cace;font-size:11px}.race-options select,#sectorField select{width:100%;padding:6px 9px;border:1px solid #557078;border-radius:4px;background:#162d37;color:#edf5f5;font:inherit;font-size:13px}.setup #sectorField[hidden],.race-options [hidden]{display:none}
+@media(max-height:560px) and (orientation:landscape){.garageInfo .stats{display:none}.garageInfo .make{display:none}.garageInfo .model{font-size:38px}.garageInfo .setup{margin-top:8px}.race-options{margin-bottom:5px}.touch-device .garageInfo{top:51px}.garageInfo .eyebrow{display:none}}
+@media(max-height:330px) and (orientation:landscape){.garageInfo .color{display:none}.garageInfo .seg,.garageInfo .go{min-height:36px}}
+.qualityControl,.quality{color:#dce7e7;background:#10252f;border:1px solid var(--line);border-radius:5px;font:inherit}
+.qualityControl{display:flex;align-items:center;gap:4px;padding-left:9px;font-size:12px;color:#aebfc6}
+.quality{padding:6px 4px;cursor:pointer}.qualityControl .quality{border:0;background:transparent;height:100%}
+.racing .qualityControl{display:none}
+@media(max-width:420px) and (orientation:portrait){header{gap:6px}header .mark{display:none}.tools{gap:4px}.qualityControl{padding-left:5px;font-size:11px}}
+.cornerHint{position:absolute;left:50%;top:13%;transform:translateX(-50%);border-radius:4px;border-bottom:2px solid #d1aa6c;background:#10232cde;padding:5px 11px;font-size:13px;color:#ffdfad;white-space:nowrap}
+@media(max-aspect-ratio:1/1){.cornerHint{top:122px}}
+@media(orientation:landscape) and (max-height:510px){.cornerHint{top:10px;font-size:11px}}
+@media(orientation:landscape) and (max-width:650px){.cornerHint{top:55px}}
 </style></head><body><main id="app">
 <canvas id="view" aria-label="三维赛车画面"></canvas>
 <div class="shade" id="shade"></div>
-<header><span class="mark" aria-hidden="true"><i></i><i></i><i></i></span><span class="brand">北环竞速</span><span class="divider"></span><span class="micro appName">NORDSCHLEIFE / TRACK CLUB</span><div class="tools"><button id="audio" class="small" aria-pressed="false">声音 · 关</button><button id="help" class="small">操作说明</button><button id="pauseBtn" class="small" hidden>暂停</button></div></header>
+<header><span class="mark" aria-hidden="true"><i></i><i></i><i></i></span><span class="brand">北环竞速</span><span class="divider"></span><span class="micro appName">NORDSCHLEIFE / TRACK CLUB</span><div class="tools"><label class="qualityControl">画质 <select id="qualityGarage" class="quality" aria-label="画面质量"><option value="smooth">流畅</option><option value="balanced" selected>均衡</option><option value="high">高清</option></select></label><button id="audio" class="small" aria-pressed="false">声音 · 关</button><button id="help" class="small">操作说明</button><button id="pauseBtn" class="small" hidden>暂停</button></div></header>
 <section id="garageInfo" class="garageInfo"><div class="eyebrow">DRIVER'S GARAGE</div><div class="make">小米</div><h1 class="model">SU7 <em>Max</em></h1><div class="color"><i class="swatch"></i>海湾蓝 <span>AQUA BLUE</span></div>
 <div class="stats"><div><b>495 <small>kW</small></b><label>双电机功率</label></div><div><b>2.78 <small>s</small></b><label>零百加速</label></div><div><b>265 <small>km/h</small></b><label>最高车速</label></div></div>
-<div class="setup"><label>选择赛程</label><div class="segments"><button class="seg on" data-mode="sprint">短程冲刺 <span>3.2 KM</span></button><button class="seg" data-mode="full">纽北全圈 <span>20.832 KM</span></button></div><button class="go" id="startBtn" disabled><span id="startLabel">载入车模…</span><b>↗</b></button></div></section>
-<div id="garageFoot" class="garageFoot"><div class="trackTag"><strong>Nürburgring Nordschleife</strong><span class="micro">德国 · 纽博格林北环 &nbsp; / &nbsp; 6 车竞速</span></div><div class="actions"><span class="hint dragHint">拖动环视车身</span><button class="small" id="garageWing">尾翼 · 收起</button></div></div>
-<section class="hud" id="hud" hidden><div class="progress" id="progress"></div><div class="hudTop"><div class="panel"><small>排名 / POS</small><b id="position">6/6</b></div><div class="panel"><small>用时 / TIME</small><b id="clock">0:00.00</b></div><div class="panel"><small>剩余 / KM</small><b id="remain">3.20</b></div></div>
+<div class="setup"><div class="race-options">
+<label>玩法<select id="event"><option value="race">六车竞速</option><option value="time">个人计时</option><option value="practice">弯道练习</option></select></label>
+<label id="difficultyField">对手难度<select id="difficulty"><option value="club">入门</option><option value="sport" selected>运动</option><option value="expert">专家</option></select></label>
+</div><div class="segments" id="courses" aria-label="赛程"><button class="seg on" data-mode="sprint">短程冲刺 <span>3.2 KM</span></button><button class="seg" data-mode="full">纽北全圈 <span>20.832 KM</span></button></div><label id="sectorField" hidden>练习路段<select id="sector"><option value="carousel">卡鲁塞尔 · 1.25 km</option><option value="garden">植物园 · 1.70 km</option><option value="finale">长直道至终点 · 2.13 km</option></select></label><button class="go" id="startBtn" disabled><span id="startLabel">载入车模…</span><b>↗</b></button></div></section>
+<div id="garageFoot" class="garageFoot"><div class="trackTag"><strong>Nürburgring Nordschleife</strong><span class="micro" id="eventNote">德国 · 纽博格林北环 / 6 车竞速</span></div><div class="actions"><span class="hint dragHint">拖动环视车身</span><button class="small" id="garageWing">尾翼 · 收起</button></div></div>
+<section class="hud" id="hud" hidden><div class="progress" id="progress"></div><div class="hudTop"><div class="panel"><small id="metricLabel">排名 / POS</small><b id="position">6/6</b></div><div class="panel"><small>用时 / TIME</small><b id="clock">0:00.00</b></div><div class="panel"><small>剩余 / KM</small><b id="remain">3.20</b></div></div>
 <div class="mapbox"><canvas id="mini" width="360" height="174"></canvas><strong id="sectionName">T13</strong><div class="micro" id="sectionCn">起终点</div></div><div class="telemetry"><div class="speed" id="speed">0</div><div class="speedunit mono">KM/H</div><div class="power"><i id="power"></i></div><div class="hudActions"><button id="raceWing" class="small">R 尾翼 · 收起</button><button id="camera" class="small">C 视角</button></div></div>
-<div id="count" class="count"></div><div id="alert" class="alert" hidden></div><div class="touch"><div><button data-key="left" aria-label="左转">◀</button><button data-key="right" aria-label="右转">▶</button></div><div><button data-key="brake">刹车</button><button class="throttle" data-key="gas">加速</button></div></div></section>
+<div class="cornerHint mono" id="cornerHint" hidden></div><div id="count" class="count"></div><div id="alert" class="alert" hidden></div><div class="touch"><div id="steerPad" role="slider" tabindex="0" aria-label="方向，向两侧滑动转向" aria-valuemin="-100" aria-valuemax="100" aria-valuenow="0"><span aria-hidden="true">◀</span><span aria-hidden="true">▶</span></div><div><button data-key="handbrake">手刹</button><button data-key="brake">刹车</button><button class="throttle" data-key="gas">加速</button></div></div></section>
 <div class="veil" id="modal" hidden><div class="dialog" role="dialog" aria-modal="true"><h2 id="dialogTitle"></h2><div id="dialogBody"></div><button class="go" id="primary"></button><button class="small" id="secondary" hidden></button><button class="small" id="tertiary" hidden></button></div></div><div id="error" class="note" hidden></div>
 </main><script>__BUNDLE__</script></body></html>

@@ -2,9 +2,17 @@
 
 [打开游戏](https://cy642.github.io/su7-max-nordschleife/)
 
-[下载安卓横屏版 APK](https://github.com/cy642/su7-max-nordschleife/releases/download/android-v1.0.0/Nordrun-SU7-Max-1.0.0.apk)
+[下载安卓横屏版 APK](https://github.com/cy642/su7-max-nordschleife/releases/download/android-v1.1.0/Nordrun-SU7-Max-1.1.0.apk)
 
-驾驶海湾蓝 SU7 Max，与五辆 AI 赛车跑 3.2 公里冲刺或 20.832 公里北环全圈。方向键或 WASD 驾驶，R 手动升降尾翼，C 切换四种视角，P 暂停。手机支持方向和踏板同时按压。暂停菜单可以开启「流畅优先」。
+在车库选玩法，再选赛程或练习路段。
+
+| 玩法 | 怎么玩 |
+| --- | --- |
+| 六车竞速 | 和五辆对手跑 3.2 公里冲刺或 20.832 公里全圈。入门、运动和专家三档会改变对手的加速、刹车、过弯速度和直道极速。 |
+| 个人计时 | 独自在短程或全圈挑战个人最佳。途中显示与个人最佳的累计用时差，终点可查看三段各自的成绩。 |
+| 弯道练习 | 直接从卡鲁塞尔、植物园或通往终点的长直道路段发车，每段单独保存最佳用时，可以冲线后立即重试。 |
+
+**驾驶操作**　W / ↑ 加速，S / ↓ 刹车，A、D 或左右方向键转向，空格拉手刹，C 切换四种视角，R 手动升降尾翼，Esc 或 P 暂停。手机左手按住或滑动方向条，靠近中心微调、靠近两端打满、松开回正；右手同时控制踏板。遇到明显弯道，前方提示会显示方向和距离。车库和暂停菜单可选流畅、均衡或高清画质，选择会自动保存。
 
 下载 `index.html` 后可在支持 WebGL 的浏览器中离线打开。页面内嵌车模、线路和场景纹理。
 
@@ -15,7 +23,7 @@
 ```sh
 npm ci
 npm run build
-node --test tests/contact.test.mjs
+node --test
 ```
 
 发布文件是根目录的 `index.html`。车模、环境和线路数据的来源见[素材署名](CREDITS.md)。

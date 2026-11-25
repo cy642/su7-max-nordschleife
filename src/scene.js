@@ -3,37 +3,13 @@ import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {RGBELoader} from 'three/addons/loaders/RGBELoader.js';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
-import course from './course.json';
+import course from './course.json' with {type:'json'};
 import photographs from './scenery-data.js';
 import cabinParts from './cabin.json';
+import {buildRoadTerrain} from './terrain.mjs';
 
-export const LENGTH=20832, N=course.points.length, STEP=LENGTH/N;
-const mod=(x,n)=>(x%n+n)%n;
-// Remove short-wave GPS heading noise. The same centreline drives the mesh,
-// suspension contacts and camera, including through the lap seam.
-const pts=course.points.map((_,i)=>{
-  const p=new T.Vector3();
-  for(let k=-2;k<=2;k++){const q=course.points[mod(i+k,N)],w=[1,4,6,4,1][k+2]/16;p.x+=q[0]*w;p.y+=q[1]*w;p.z+=q[2]*w;}
-  return p;
-});
-const spline=pts.map((p,i)=>{
- const prev=pts[mod(i-1,N)],next=pts[(i+1)%N],after=pts[(i+2)%N];
- return ['x','y','z'].map(axis=>{
-   const a=p[axis],b=next[axis],m=(b-prev[axis])*.5,n=(after[axis]-a)*.5;
-   return [a,m,3*(b-a)-2*m-n,2*(a-b)+m+n];
- });
-});
-function value(c,t){return ((c[3]*t+c[2])*t+c[1])*t+c[0];}
-function deriv(c,t){return (3*c[3]*t+2*c[2])*t+c[1];}
-export function sample(s){
-  const f=mod(s,LENGTH)/STEP,i=Math.floor(f),t=f-i,[x,y,z]=spline[i];
-  const dx=deriv(x,t),dz=deriv(z,t),l=Math.hypot(dx,dz)||STEP;
-  return {x:value(x,t),y:value(y,t),z:value(z,t),tx:dx/l,tz:dz/l,grade:deriv(y,t)/l};
-}
-export function curvature(s,span=11){
-  const a=sample(s-span),b=sample(s+span);
-  return Math.atan2(a.tx*b.tz-a.tz*b.tx,a.tx*b.tx+a.tz*b.tz)/(2*span);
-}
+import {LENGTH,N,STEP,mod,pts,sample,curvature} from './track.mjs';
+export {LENGTH,N,STEP,sample,curvature};
 const sections=[[0,'T13','起终点'],[430,'Hatzenbach','哈岑巴赫'],[1850,'Hocheichen','高橡树'],[2700,'Flugplatz','飞行广场'],[3540,'Schwedenkreuz','瑞典十字'],[4300,'Aremberg','阿伦贝格'],[4800,'Fuchsröhre','狐狸洞'],[5800,'Adenauer Forst','阿德瑙森林'],[6900,'Metzgesfeld','梅茨格斯费尔德'],[7600,'Kallenhard','卡伦哈德'],[8300,'Wehrseifen','韦尔赛芬'],[9000,'Breidscheid','布赖德沙伊德'],[9550,'Ex-Mühle','旧磨坊'],[10300,'Bergwerk','矿山弯'],[11200,'Kesselchen','小盆地'],[12600,'Klostertal','修道院谷'],[13100,'Karussell','卡鲁塞尔'],[14050,'Hohe Acht','高八峰'],[15100,'Wippermann','维珀曼'],[15800,'Brünnchen','小泉'],[16600,'Pflanzgarten','植物园'],[17600,'Schwalbenschwanz','燕尾弯'],[18300,'Galgenkopf','绞架山'],[18700,'Döttinger Höhe','多廷格直道'],[20250,'Tiergarten','蒂尔加滕']];
 export function section(s){let ss=mod(s,LENGTH);return sections.findLast(k=>k[0]<=ss)||sections[0];}
 export const mapPoints=pts.filter((_,i)=>i%8===0).map(p=>[p.x,p.z]);
@@ -44,11 +20,6 @@ function box(parent,w,h,l,mat,x,y,z){const o=new T.Mesh(new T.BoxGeometry(w,h,l)
 function texture(w,h,draw){const el=document.createElement('canvas');el.width=w;el.height=h;draw(el.getContext('2d'),w,h);const tex=new T.CanvasTexture(el);tex.colorSpace=T.SRGBColorSpace;return tex;}
 function rng(seed){return ()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};}
 function xz(p,lat){return [p.x-p.tz*lat,p.z+p.tx*lat];}
-function terrainHeight(x,z){
- const t=course.terrain, a=T.MathUtils.clamp((x-t.x)/t.step,0,t.nx-1.001), b=T.MathUtils.clamp((z-t.z)/t.step,0,t.nz-1.001);
- const i=Math.floor(a),j=Math.floor(b),k=i+j*t.nx;
- return T.MathUtils.lerp(T.MathUtils.lerp(t.h[k],t.h[k+1],a-i),T.MathUtils.lerp(t.h[k+t.nx],t.h[k+t.nx+1],a-i),b-j);
-}
 export function place(obj,s,lat,h=0,angle=0,roll=0){
  const p=sample(s);obj.position.set(p.x-p.tz*lat,p.y+h,p.z+p.tx*lat);
  obj.rotation.order='YXZ';obj.rotation.set(-Math.atan(p.grade),Math.atan2(p.tx,p.tz)-angle,roll,'YXZ');return p;
@@ -61,6 +32,60 @@ function softShadow(w,l){
  const tex=texture(128,128,c=>{const grad=c.createRadialGradient(64,64,3,64,64,64);grad.addColorStop(0,'rgba(0,0,0,.84)');grad.addColorStop(.52,'rgba(0,0,0,.63)');grad.addColorStop(1,'rgba(0,0,0,0)');c.fillStyle=grad;c.fillRect(0,0,128,128);});
  const m=new T.Mesh(new T.PlaneGeometry(w,l),new T.MeshBasicMaterial({map:tex,transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-3}));m.rotation.x=-Math.PI/2;m.position.y=.026;return m;
 }
+// The supplied rear kit includes a separate curved insert at the foot of the back
+// window. Detach its exact faces before batching the rest of the black rear trim.
+function detachDeckPanel(source, geom) {
+ const local=source.attributes.position, world=geom.attributes.position, normals=geom.attributes.normal;
+ const fixed=[], faces=[], positions=[], directions=[], ids=new Map(), index=geom.index.array;
+ for(let i=0;i<index.length;i+=3){
+   const id=index[i],x=local.getX(id),y=local.getY(id),z=local.getZ(id);
+   if(Math.abs(x)>.55||y<.91||y>.98||z< -2.11||z> -1.90){fixed.push(id,index[i+1],index[i+2]);continue;}
+   for(const id of index.subarray(i,i+3)){
+     if(!ids.has(id)){
+       ids.set(id,positions.length/3);
+       positions.push(world.getX(id),world.getY(id),world.getZ(id));
+       directions.push(normals.getX(id),normals.getY(id),normals.getZ(id));
+     }
+     faces.push(ids.get(id));
+   }
+ }
+ geom.setIndex(fixed);
+ const panel=new T.BufferGeometry();
+ panel.setAttribute('position',new T.Float32BufferAttribute(positions,3));
+ panel.setAttribute('normal',new T.Float32BufferAttribute(directions,3));
+ panel.setIndex(faces);panel.computeBoundingBox();
+ return panel;
+}
+
+function mountSpoiler(body,panel,paint) {
+ const pivot=panel.boundingBox.getCenter(new T.Vector3());
+ panel.translate(-pivot.x,-pivot.y,-pivot.z);
+ const blade=new T.Group();blade.name='Active rear spoiler';blade.position.copy(pivot);body.add(blade);
+ blade.add(new T.Mesh(panel,paint));
+ const lining=new T.MeshStandardMaterial({color:0x20262a,metalness:.32,roughness:.59,side:T.DoubleSide});
+ const underside=new T.Mesh(panel,lining);underside.position.y=-.009;blade.add(underside);
+ // Close the native opening with a shallow recessed well. The original panel is
+ // the floor template, so its curvature meets the lip all the way to each tip.
+ const recess=new T.Mesh(panel,lining);recess.position.copy(pivot);recess.position.y-=.033;body.add(recess);
+ const up=new T.Vector3(0,1,0),end=new T.Vector3(),delta=new T.Vector3();
+ const arms=[-.30,.30].map(x=>{
+   const root=pivot.clone().add(new T.Vector3(x,-.040,.026));
+   const joint=new T.Vector3(x,-.015,-.010);
+   const rod=box(body,.032,1,.045,lining,0,0,0);
+   return {root,joint,rod};
+ });
+ function update(t){
+   blade.position.copy(pivot);blade.position.y+=.167*t;blade.position.z-=.089*t;blade.rotation.x=.52*t;
+   for(const {root,joint,rod} of arms){
+     rod.visible=t>.015;if(!rod.visible)continue;
+     end.copy(joint).applyQuaternion(blade.quaternion).add(blade.position);
+     delta.subVectors(end,root);rod.scale.y=delta.length();
+     rod.position.copy(root).lerp(end,.5);rod.quaternion.setFromUnitVectors(up,delta.normalize());
+   }
+ }
+ update(0);
+ return update;
+}
 export async function carModel(base64){
  const data=Uint8Array.from(atob(base64),v=>v.charCodeAt(0)).buffer;
  const {scene,parser}=await new GLTFLoader().parseAsync(data,'');scene.updateMatrixWorld(true);
@@ -69,6 +94,7 @@ export async function carModel(base64){
  const box3=new T.Box3().setFromObject(scene,true), size=box3.getSize(new T.Vector3()), center=box3.getCenter(new T.Vector3());
  const scale=4.997/size.z;
  const byMaterial=new Map(),wheelParts=new Map(),wheelPivots=[],body=new T.Group(),windows=new Set();
+ let deckPanel;
  geometryGroup.add(body);
  const handwheel=new T.Group(),steeringAxis=new T.Vector3(0,-.34,.94).normalize();
  body.add(handwheel);
@@ -94,7 +120,9 @@ export async function carModel(base64){
   else if(m.name.includes('Glass_231')){m.transmission=0;m.transparent=true;m.opacity=.87;m.color.setHex(0x182c38);m.roughness=.16;m.metalness=.25;m.depthWrite=false;windows.add(m);}
   else if(m.name==='Light_glass'){m.transparent=true;m.opacity=.13;m.color.setHex(0xb5e8f4);m.depthWrite=false;}
   const geom=o.geometry.clone();geom.applyMatrix4(o.matrixWorld);geom.translate(-center.x,-box3.min.y,-center.z);geom.scale(scale,scale,scale);
-  const instrument=cabinParts[parser.associations.get(o)?.meshes];
+  const meshIndex=parser.associations.get(o)?.meshes;
+  if(meshIndex===39)deckPanel=detachDeckPanel(o.geometry,geom);
+  const instrument=cabinParts[meshIndex];
   if(instrument){
    const wheelIDs=new Set(instrument.wheel),screenIDs=new Set(instrument.screen);
    const fixed=[],wheelFaces=[],screenFaces=[],idx=geom.index.array;
@@ -131,13 +159,8 @@ export async function carModel(base64){
    const pivot=bounds.getCenter(new T.Vector3());hub.position.copy(pivot);for(const part of parts){part.position.copy(pivot).negate();spin.add(part);}
    hub.add(spin);geometryGroup.add(hub);wheelPivots.push({hub,spin,front:original.name.includes('Front')});
  }
- // A body-colour blade sits in the deck and lifts on two articulated struts.
- const wing=new T.Group(), blade=new T.Group(), arms=[];
- const shape=new T.Shape();shape.moveTo(-.81,-.10);shape.quadraticCurveTo(-.85,.01,-.77,.12);shape.quadraticCurveTo(0,.195,.77,.12);shape.quadraticCurveTo(.85,.01,.81,-.10);shape.quadraticCurveTo(0,-.035,-.81,-.10);
- const geom=new T.ExtrudeGeometry(shape,{depth:.027,bevelEnabled:true,bevelSize:.011,bevelThickness:.008,bevelSegments:2,steps:1,curveSegments:14});geom.rotateX(-Math.PI/2);
- blade.add(new T.Mesh(geom,paint));wing.add(blade);
- for(const side of [-1,1])arms.push(box(wing,.054,1,.068,lam(0x223138),.48*side,0,-2.05));
- body.add(wing);geometryGroup.add(softShadow(3.28,6.48));
+ const updateWing=mountSpoiler(body,deckPanel,paint);
+ geometryGroup.add(softShadow(3.28,6.48));
  const makeOpponent=(tint)=>{
    const clone=geometryGroup.clone(true),newPaint=paint.clone(),rivalTail=tail.clone();newPaint.color.setHex(tint);
    clone.traverse(o=>{if(o.isMesh&&o.material===paint)o.material=newPaint;else if(o.isMesh&&o.material===tail)o.material=rivalTail;else if(o.isMesh&&windows.has(o.material))o.material=o.material.clone();});return clone;
@@ -154,33 +177,40 @@ export async function carModel(base64){
     updateCluster(speed);handwheel.quaternion.setFromAxisAngle(steeringAxis,steering*(1.25-.65*Math.min(1,speed/65)));
     for(const w of wheelPivots){w.spin.rotation.x+=speed*dt/.351;if(w.front)w.hub.rotation.y=-steering*.34;}
     tail.emissiveIntensity=brake?2.0:.55;
- },updateWing(t){
-    blade.position.set(0,.96+.24*t,-2.065-.13*t);blade.rotation.x=-.19+.34*t;
-    for(const a of arms){a.visible=t>.15;a.position.y=.986+.10*t;a.scale.y=.014+.23*t;a.rotation.x=-.44*t;}
- }};
+ },updateWing};
 }
 function exteriorLod(source,paint,tail){
  // Cluster the original exterior to preserve its silhouette when an AI car recedes.
- source.updateMatrixWorld(true);const groups=new Map(),point=new T.Vector3();
- source.traverse(o=>{
+ source.updateMatrixWorld(true);const groups=new Map(),point=new T.Vector3(),normal=new T.Vector3(),normalMatrix=new T.Matrix3();
+ source.traverseVisible(o=>{
    if(!o.isMesh||o.material.transparent&&o.material.name==='Light_glass'||!o.geometry.index||o.material.map?.image?.width===128&&o.material.depthWrite===false)return;
    const mat=o.material;
    if(/Details_INT|Details_Grid|Chassis/i.test(mat.name))return;
    const role=mat===paint?'paint':mat===tail?'tail':/Glass_231/.test(mat.name)?'glass':/Wheel1A|Disk_/.test(mat.name)?'wheel':'trim';
-   if(!groups.has(role))groups.set(role,{vertices:[],indices:[],bins:new Map()});const g=groups.get(role);
-   const a=o.geometry.attributes.position,ids=new Uint32Array(a.count);
-   for(let i=0;i<a.count;i++){
-     point.fromBufferAttribute(a,i).applyMatrix4(o.matrixWorld);
-     const tag=[point.x,point.y,point.z].map(v=>Math.round(v*15)).join(',');
-     let n=g.bins.get(tag);if(n===undefined){n=g.vertices.length/3;g.bins.set(tag,n);g.vertices.push(point.x,point.y,point.z);}ids[i]=n;
-   }
+   if(!groups.has(role))groups.set(role,{vertices:[],normals:[],indices:[],bins:new Map()});const g=groups.get(role);
+   const a=o.geometry.attributes.position,normals=o.geometry.attributes.normal,ids=new Map();
+   const exteriorPanel=role==='paint'||role==='glass'||role==='tail';
+   const cells=exteriorPanel?23:12;
+   normalMatrix.getNormalMatrix(o.matrixWorld);
    const faces=o.geometry.index.array;
-   for(let i=0;i<faces.length;i+=3){const a=ids[faces[i]],b=ids[faces[i+1]],c=ids[faces[i+2]];
+   for(const i of faces){
+     if(ids.has(i))continue;
+     point.fromBufferAttribute(a,i).applyMatrix4(o.matrixWorld);
+     normal.fromBufferAttribute(normals,i).applyNormalMatrix(normalMatrix);
+     // Keep creases and thin lamp strips distinct where adjacent surfaces share a cell.
+     const cell=[point.x*cells,point.y*cells,point.z*cells];
+     if(exteriorPanel)cell.push(normal.x,normal.y,normal.z);
+     const tag=cell.map(Math.round).join(',');
+     let n=g.bins.get(tag);
+     if(n===undefined){n=g.vertices.length/3;g.bins.set(tag,n);g.vertices.push(point.x,point.y,point.z);g.normals.push(normal.x,normal.y,normal.z);}
+     ids.set(i,n);
+   }
+   for(let i=0;i<faces.length;i+=3){const a=ids.get(faces[i]),b=ids.get(faces[i+1]),c=ids.get(faces[i+2]);
      if(a!==b&&a!==c&&b!==c)g.indices.push(a,b,c);}
  });
  const highColors={paint:0x91b4a2,tail:0xde2231,glass:0x20313c,wheel:0x697178,trim:0x1c2226};
  const car=new T.Group();for(const [role,data] of groups){
-   const geo=new T.BufferGeometry();geo.setAttribute('position',new T.Float32BufferAttribute(data.vertices,3));geo.setIndex(data.indices);geo.computeVertexNormals();
+   const geo=new T.BufferGeometry();geo.setAttribute('position',new T.Float32BufferAttribute(data.vertices,3));geo.setAttribute('normal',new T.Float32BufferAttribute(data.normals,3));geo.setIndex(data.indices);
    const material=new T.MeshStandardMaterial({color:highColors[role],roughness:role==='trim'?.8:.35,metalness:role==='paint'?.5:.16,side:T.DoubleSide});
    if(role==='tail'){material.emissive.setHex(0xbd1520);material.emissiveIntensity=.65;}
    const mesh=new T.Mesh(geo,material);mesh.name=role;car.add(mesh);
@@ -217,8 +247,9 @@ export async function setupStage(renderer){
 }
 function buildTrack(scene,asphalt,grassMap,treePhotos){
  const t=course.terrain,coords=[],indices=[],col=[];
+ const terrain=buildRoadTerrain(t,sample,LENGTH,STEP/2);
  const rnd=rng(606),cl=new T.Color();
- for(let j=0;j<t.nz;j++)for(let i=0;i<t.nx;i++){let k=j*t.nx+i;coords.push(t.x+i*t.step,t.h[k]-5,t.z+j*t.step);cl.setHSL(.258+rnd()*.029,.20+rnd()*.08,.245+rnd()*.06);col.push(cl.r,cl.g,cl.b);if(i<t.nx-1&&j<t.nz-1)indices.push(k,k+t.nx,k+1,k+1,k+t.nx,k+t.nx+1);}
+ for(let j=0;j<t.nz;j++)for(let i=0;i<t.nx;i++){let k=j*t.nx+i;coords.push(t.x+i*t.step,terrain.heights[k],t.z+j*t.step);cl.setHSL(.258+rnd()*.029,.20+rnd()*.08,.245+rnd()*.06);col.push(cl.r,cl.g,cl.b);if(i<t.nx-1&&j<t.nz-1)indices.push(k,k+t.nx,k+1,k+1,k+t.nx,k+t.nx+1);}
  function mesh(pos,idx,mat,colors=null,uv=null){
   const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(pos,3));g.setIndex(idx);if(colors)g.setAttribute('color',new T.Float32BufferAttribute(colors,3));if(uv)g.setAttribute('uv',new T.Float32BufferAttribute(uv,2));g.computeVertexNormals();g.computeBoundingSphere();const m=new T.Mesh(g,mat);scene.add(m);return m;
  }
@@ -266,17 +297,19 @@ function buildTrack(scene,asphalt,grassMap,treePhotos){
  function safe(x,z){for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++){const a=bins.get(key(x+i*cell,z+j*cell));if(a?.some(p=>(p.x-x)**2+(p.z-z)**2<14**2))return false;}return true;}
  for(let start=0;start<N;start+=128){
   const cnt=Math.min(128,N-start),cross=Array.from({length:cnt+1},(_,i)=>sample((start+i)*STEP));
+  const pavement=Array.from({length:cnt*4+1},(_,i)=>i%4?sample((start+i/4)*STEP):cross[i/4]);
   function ribbon(l1,h1,l2,h2,mat,colorAt){
    const v=[],ix=[],colors=[],uv=[],lighting=[];let color=new T.Color();
-   for(let i=0;i<=cnt;i++){
-    const p=cross[i],n=start+i;
+   const fine=mat===road||mat===edgePaint,rows=fine?pavement:cross;
+   for(let i=0;i<rows.length;i++){
+    const p=rows[i],row=fine?i/4:i,n=start+row;
     for(const [k,[lat,hh]] of [[l1,h1],[l2,h2]].entries()){
      const [x,z]=xz(p,lat);const h=typeof hh==='function'?hh(p,x,z):p.y+hh;
      v.push(x,h,z);uv.push(lat/4.4,n*STEP/4.4);
-     const tile=start/128;lighting.push((tile%16*128+64+T.MathUtils.clamp(lat,-26,26)*124/52)/2048,(Math.floor(tile/16)*1024+2+i/128*1020)/2048);
+     const tile=start/128;lighting.push((tile%16*128+64+T.MathUtils.clamp(lat,-26,26)*124/52)/2048,(Math.floor(tile/16)*1024+2+row/128*1020)/2048);
      if(colorAt){color.set(colorAt(n,k));colors.push(color.r,color.g,color.b);}
     }
-    if(i<cnt){let a=i*2;ix.push(a,a+1,a+2,a+1,a+3,a+2);}
+    if(i+1<rows.length){let a=i*2;ix.push(a,a+1,a+2,a+1,a+3,a+2);}
    }
    if(mat===curb){
     const curbV=[],curbI=[],curbC=[];
@@ -285,7 +318,7 @@ function buildTrack(scene,asphalt,grassMap,treePhotos){
     mesh(curbV,curbI,mat,curbC).geometry.setAttribute('shadeUV',new T.Float32BufferAttribute(lang,2));
    }else{
     const geo=mesh(v,ix,mat,colorAt?colors:null,uv).geometry;geo.setAttribute('shadeUV',new T.Float32BufferAttribute(lighting,2));
-    if(mat===road){const line=[];for(let i=0;i<=cnt;i++){const s=(start+i)*STEP,bend=curvature(s,24),entry=curvature(s+48,32);
+    if(mat===road){const line=[];for(let i=0;i<rows.length;i++){const s=(start+i/4)*STEP,bend=curvature(s,24),entry=curvature(s+48,32);
       const lateral=2.8*Math.tanh(bend*120)-1.1*Math.tanh(entry*95);
       const stress=.38+.60*Math.min(1,(Math.abs(entry)+Math.abs(bend))*65);
       line.push(l1-lateral,stress,l2-lateral,stress);
@@ -298,7 +331,7 @@ function buildTrack(scene,asphalt,grassMap,treePhotos){
    const bend=curvature((start+64)*STEP,125);
    if(Math.abs(bend)>.00065||start<128)ribbon(side*5.9,.012,side*6.62,.035,curb,i=>i%2?0xc63b32:0xe7ded1);
    ribbon(side*5.86,-.055,side*15,-.14,grass,(n,k)=>k?0x859a61:(n%5?0x8ea15e:0x909f60));
-   ribbon(side*15,-.14,side*48,(p,x,z)=>terrainHeight(x,z)-4.9,grass,(n,k)=>k?0x6e875a:0x859a61);
+   ribbon(side*15,-.14,side*48,(p,x,z)=>terrain.heightAt(x,z)-.12,grass,(n,k)=>k?0x6e875a:0x859a61);
    const profile=[[.31,.01],[.37,-.08],[.43,-.09],[.51,0],[.56,.01],[.64,-.08],[.70,-.09],[.79,.015]];
    const pos=[],ind=[],light=[];
    for(let i=0;i<=cnt;i++){
@@ -314,7 +347,7 @@ function buildTrack(scene,asphalt,grassMap,treePhotos){
   for(let i=0;i<cnt;i+=2){const p=cross[i];for(const sign of [-1,1]){
    const [x,z]=xz(p,sign*9);poles.push([x,p.y+.42,z,.09,.8,.09]);
    for(let k=0;k<3;k++){const d=(k===0?15+rnd()*9:24+rnd()*64)*sign;const [xx,zz]=xz(p,d);const x=xx+p.tx*rnd()*9,z=zz+p.tz*rnd()*9;if(!safe(x,z)||(start<64&&sign===1))continue;
-    const y=p.y+T.MathUtils.clamp((Math.abs(d)-15)/33,0,1)*(terrainHeight(x,z)-4.9-p.y)-.85;
+    const y=p.y+T.MathUtils.clamp((Math.abs(d)-15)/33,0,1)*(terrain.heightAt(x,z)-.12-p.y)-.85;
     const height=12+rnd()*12,species=Math.floor(rnd()*treeMats.length),img=treePhotos[species].image;
     const width=height*img.width/img.height*(.90+rnd()*.30);
     trees[species].push([x,y,z,width,height,rnd()]);
@@ -335,7 +368,7 @@ function buildTrack(scene,asphalt,grassMap,treePhotos){
   const m=new T.Mesh(new T.PlaneGeometry(2,.68),nameplate(k+'  km','#e6e8d8','#213e3c'));m.rotation.y=Math.PI;m.position.y=1.8;g.add(m);}
  shadeTex.needsUpdate=true;
  const sprintFinish=gate.clone();scene.add(sprintFinish);place(sprintFinish,3200,0);
- sprintFinish.children.find(o=>o.isMesh&&o.geometry===banner.geometry).material=nameplate('SPRINT   /   FINISH','#123b45','#86f7ee');
+ sprintFinish.children.find(o=>o.isMesh&&o.geometry===banner.geometry).material=nameplate('NORDRUN   /   FINISH','#123b45','#86f7ee');
  return sprintFinish;
 }
 const postMaterial=lam(0x7d8580),postGeometry=new T.BoxGeometry(1,1,1);
