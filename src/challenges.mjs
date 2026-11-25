@@ -1,16 +1,30 @@
+import {gateBenchmarks} from './competition.mjs';
+
 // Checkpoints use absolute race time, so pausing does not consume the allowance.
-export function checkpointPlan(length) {
+export function checkpointPlan(length, difficulty='sport', vehicleId='max') {
   const legs = length > 4000 ? 12 : 4;
-  const legTime = length / legs / 32;
+  const gates = Array.from({length: legs - 1}, (_, i) => length * (i + 1) / legs);
+  if (difficulty === 'expert' || difficulty === 'master') {
+    const times = gateBenchmarks([...gates,length], difficulty, vehicleId).map(point => point.time);
+    const margin = difficulty === 'master' ? 1.035 : 1.10;
+    const bonuses = times.slice(1).map((time,i) => (time - times[i]) * margin);
+    return {gates, allowance:times[0] * margin + (difficulty === 'master' ? 1.6 : 4), bonus:bonuses[0], bonuses};
+  }
+  const legTime = length / legs / (difficulty === 'club' ? 27 : 32);
   return {
-    gates: Array.from({length: legs - 1}, (_, i) => length * (i + 1) / legs),
-    allowance: legTime + 9,
-    bonus: legTime
+    gates, allowance:legTime + (difficulty === 'club' ? 13 : 9), bonus:legTime, bonuses:gates.map(() => legTime)
   };
 }
 
 export function speedTraps(length) {
   return length > 4000 ? [2700, 10300, 19750] : [420, 1630, 2860];
+}
+
+export function speedTrapTarget(length, difficulty, vehicleId) {
+  const reference = gateBenchmarks(speedTraps(length), difficulty, vehicleId);
+  const mean = reference.reduce((total, point) => total + point.speed * 3.6, 0) / reference.length;
+  const fraction = {club:.86, sport:.92, expert:.96, master:.985}[difficulty];
+  return Math.floor(mean * fraction);
 }
 
 export function crossingFraction(car, line) {

@@ -308,7 +308,22 @@ export async function setupStage(renderer){
    box(challengeMarker,.62,.32,.10,ink,7.2*side,1.20,0);
  }
  challengeMarker.userData.ink=ink;challengeMarker.visible=false;world.add(challengeMarker);
- return {garage,world,sprintFinish,challengeMarker};
+ const lineMarkers=[makeLineGate(0xffc35d),makeLineGate(0x65bdcf)];
+ for(const gate of lineMarkers){gate.visible=false;world.add(gate);}
+ return {garage,world,sprintFinish,challengeMarker,lineMarkers};
+}
+
+function makeLineGate(color){
+ const gate=new T.Group(),paint=basic(color),white=basic(0xf8f1db);
+ // Half-width is set on placement. Open above the road, with a painted centre tick.
+ box(gate,2,.018,.40,paint,0,.055,0);
+ box(gate,.09,.019,1.8,white,0,.059,-.25);
+ for(const side of [-1,1]){
+   box(gate,.052,1.5,.14,paint,side,.75,0);
+   box(gate,.06,.2,.145,white,side,1.12,0);
+   box(gate,.32,.14,.15,paint,side*.865,1.46,0);
+ }
+ return gate;
 }
 function buildTrack(scene,asphalt,grassMap,treePhotos){
  const t=course.terrain,coords=[],indices=[],col=[];

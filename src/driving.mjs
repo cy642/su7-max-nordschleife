@@ -1,4 +1,5 @@
 import {getVehicle} from './vehicles.mjs';
+import {supportsBoost} from './boost.mjs';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const mix = (a, b, t) => a + (b - a) * t;
@@ -29,7 +30,9 @@ function updateSpeed(car, input, grade, shoulder, wing, vehicle, dt) {
   // Hold the standing start on a gradient until the driver commands movement.
   if (oldSpeed === 0 && !throttle) return 0;
   const setup = vehicle.physics;
-  const drive = Math.min(setup.launch, setup.specificPower / Math.max(1, oldSpeed));
+  // More power for a rolling pass. Tyre-limited launch and the speed limiter still apply.
+  const power = setup.specificPower * (input.boost && supportsBoost(vehicle.id) ? 1.24 : 1);
+  const drive = Math.min(setup.launch, power / Math.max(1, oldSpeed));
   const regen = throttle || brake || handbrake ? 0 : 1.15 * smoothstep(0, 7, oldSpeed);
   const drag = (setup.drag + wing * .000075) * oldSpeed ** 2 + .14 + grade * 9.81;
   const braking = Math.max(brake * mix(setup.brakes, 6.1, shoulder), handbrake * mix(7.6, 4.8, shoulder));
