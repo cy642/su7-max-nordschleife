@@ -10,11 +10,9 @@ import {buildRoadTerrain} from './terrain.mjs';
 import {sedanVariant} from './vehicle-bodies.js';
 import {createVisionGT} from './vision-gt.js';
 
-import {LENGTH,N,STEP,mod,pts,sample,curvature} from './track.mjs';
+import {LENGTH,N,STEP,mod,ROUTES,activeRouteId,pts,sample,curvature} from './track.mjs';
 export {LENGTH,N,STEP,sample,curvature};
-const sections=[[0,'T13','起终点'],[430,'Hatzenbach','哈岑巴赫'],[1850,'Hocheichen','高橡树'],[2700,'Flugplatz','飞行广场'],[3540,'Schwedenkreuz','瑞典十字'],[4300,'Aremberg','阿伦贝格'],[4800,'Fuchsröhre','狐狸洞'],[5800,'Adenauer Forst','阿德瑙森林'],[6900,'Metzgesfeld','梅茨格斯费尔德'],[7600,'Kallenhard','卡伦哈德'],[8300,'Wehrseifen','韦尔赛芬'],[9000,'Breidscheid','布赖德沙伊德'],[9550,'Ex-Mühle','旧磨坊'],[10300,'Bergwerk','矿山弯'],[11200,'Kesselchen','小盆地'],[12600,'Klostertal','修道院谷'],[13100,'Karussell','卡鲁塞尔'],[14050,'Hohe Acht','高八峰'],[15100,'Wippermann','维珀曼'],[15800,'Brünnchen','小泉'],[16600,'Pflanzgarten','植物园'],[17600,'Schwalbenschwanz','燕尾弯'],[18300,'Galgenkopf','绞架山'],[18700,'Döttinger Höhe','多廷格直道'],[20250,'Tiergarten','蒂尔加滕']];
-export function section(s){let ss=mod(s,LENGTH);return sections.findLast(k=>k[0]<=ss)||sections[0];}
-export const mapPoints=pts.filter((_,i)=>i%8===0).map(p=>[p.x,p.z]);
+export function section(s){const list=ROUTES[activeRouteId].sections;return list.findLast(row=>row[0]<=mod(s,LENGTH))??list[0];}
 const V=(x,y,z)=>new T.Vector3(x,y,z);
 const lam=(color)=>new T.MeshLambertMaterial({color});
 const basic=(color)=>new T.MeshBasicMaterial({color});

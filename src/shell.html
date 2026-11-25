@@ -98,6 +98,13 @@ header{position:absolute;z-index:5;left:3.4%;right:3.4%;top:max(22px,env(safe-ar
 @media (max-width:550px){.hudActions{flex-wrap:wrap;max-width:70vw}.hudActions #driveTools{justify-content:flex-end}}
 .cabinPreview #garageInfo,.cabinPreview #shade,.cabinPreview #garageWing,.cabinPreview .trackTag,.cabinPreview .dragHint{display:none}.cabinPreview .garageFoot{justify-content:flex-end}
 @media(max-width:420px) and (orientation:portrait){.garageFoot .trackTag{max-width:41%}.garageFoot .actions{gap:4px}}
+.routeField{position:relative;display:flex;align-items:center;gap:9px;background:#122831e8;border:1px solid var(--line);border-radius:5px;padding:0 9px;margin-bottom:8px}
+.routeField label{font-size:11px;color:#b9cace}
+.routeField select{flex:1;min-width:0;min-height:34px;background:transparent;border:0;color:var(--ink);font:inherit;font-size:14px;font-weight:600;cursor:pointer}
+.routeField select option{background:#11262e;color:var(--ink)}
+#routeTrace{width:54px;height:25px;border-left:1px solid var(--line);padding-left:6px}
+@media(max-height:560px) and (orientation:landscape){.routeField{margin-bottom:5px}.routeField select{min-height:32px}}
+@media(max-height:360px) and (orientation:landscape){.garageInfo .color{display:none}.garageInfo .setup{margin-top:4px}}
 </style></head><body><main id="app">
 <canvas id="view" aria-label="三维赛车画面"></canvas>
 <div class="shade" id="shade"></div>
@@ -107,14 +114,16 @@ header{position:absolute;z-index:5;left:3.4%;right:3.4%;top:max(22px,env(safe-ar
 <select id="vehicle" aria-label="选择车型"><option value="max" selected>SU7 Max</option><option value="su7">SU7 标准版</option><option value="yu7gt">YU7 GT</option><option value="ultra">SU7 Ultra</option><option value="visiongt">Vision GT</option></select></div>
 <div class="color"><i class="swatch" id="paintSwatch"></i><span id="paintName">海湾蓝</span><span id="paintEnglish">AQUA BLUE</span></div>
 <div class="stats"><div><b><span id="vehiclePower">495</span> <small>kW</small></b><label id="motorLabel">双电机功率</label></div><div><b><span id="vehicleAccel">2.78</span> <small>s</small></b><label id="accelLabel">零百加速</label></div><div><b><span id="vehicleTopSpeed">265</span> <small>km/h</small></b><label id="speedLabel">最高车速</label></div></div>
-<div class="setup"><div class="race-options">
+<div class="setup"><div id="routeField" class="routeField">
+<label for="route">赛道</label><select id="route" aria-label="选择赛道场景"></select><canvas id="routeTrace" width="124" height="52" aria-label="赛道平面图，橙色表示隧道"></canvas>
+</div><div class="race-options">
 <label>玩法<select id="event">
 <optgroup label="同场对抗"><option value="race">六车竞速</option><option value="pursuit">追击赛</option><option value="elimination">淘汰赛</option></optgroup>
 <optgroup label="单人挑战"><option value="racingline">弯道走线</option><option value="checkpoint">限时闯关</option><option value="speedtrap">测速挑战</option><option value="time">个人计时</option></optgroup>
-<optgroup label="练习与试驾"><option value="practice">弯道练习</option><option value="airfield">机场性能测试</option><option value="freedrive">纽北自由试驾</option></optgroup>
+<optgroup label="练习与试驾"><option value="practice">弯道练习</option><option value="airfield">机场性能测试</option><option value="freedrive">公路自由试驾</option></optgroup>
 </select></label>
 <label id="difficultyField">赛事难度<select id="difficulty"><option value="club">入门</option><option value="sport" selected>运动</option><option value="expert">专家</option><option value="master">大师</option></select></label>
-</div><div class="segments" id="courses" aria-label="赛程"><button class="seg on" data-mode="sprint">短程冲刺 <span>3.2 KM</span></button><button class="seg" data-mode="full">纽北全圈 <span>20.832 KM</span></button></div><div class="segments" id="testVenue" aria-label="试驾场地" hidden><button class="seg" data-test-venue="airfield">机场性能测试</button><button class="seg" data-test-venue="freedrive">纽北自由试驾</button></div><label id="sectorField" hidden>练习路段<select id="sector"><option value="carousel">卡鲁塞尔 · 1.25 km</option><option value="garden">植物园 · 1.70 km</option><option value="finale">长直道至终点 · 2.13 km</option></select></label><div class="launchActions"><button class="go" id="startBtn" disabled><span id="startLabel">载入车模…</span><b>↗</b></button><button id="quickAirfield" class="small">线上试驾</button></div><p id="challengeBrief" hidden></p></div></section>
+</div><div class="segments" id="courses" aria-label="赛程"><button class="seg on" data-mode="sprint">短程冲刺 <span>3.2 KM</span></button><button class="seg" data-mode="full">赛道全圈 <span>20.832 KM</span></button></div><div class="segments" id="testVenue" aria-label="试驾场地" hidden><button class="seg" data-test-venue="airfield">机场性能测试</button><button class="seg" data-test-venue="freedrive">公路自由试驾</button></div><label id="sectorField" hidden>练习路段<select id="sector"><option value="carousel">卡鲁塞尔 · 1.25 km</option><option value="garden">植物园 · 1.70 km</option><option value="finale">长直道至终点 · 2.13 km</option></select></label><div class="launchActions"><button class="go" id="startBtn" disabled><span id="startLabel">载入车模…</span><b>↗</b></button><button id="quickAirfield" class="small">线上试驾</button></div><p id="challengeBrief" hidden></p></div></section>
 <div id="garageFoot" class="garageFoot"><div class="trackTag"><strong id="venueName">Nürburgring Nordschleife</strong><span class="micro" id="eventNote">德国 · 纽博格林北环 / 6 车竞速</span></div><div class="actions"><span class="hint dragHint">拖动环视车身</span><button class="small" id="previewCabin" aria-pressed="false">看座舱</button><button class="small" id="garageWing">尾翼 · 收起</button></div></div>
 <section class="hud" id="hud" hidden><div class="progress" id="progress"></div><div class="hudTop"><div class="panel"><small id="metricLabel">排名 / POS</small><b id="position">6/6</b></div><div class="panel"><small id="clockLabel">用时 / TIME</small><b id="clock">0:00.00</b></div><div class="panel"><small id="distanceLabel">剩余 / KM</small><b id="remain">3.20</b></div></div>
 <button id="boostControl" type="button" aria-pressed="false" title="开启或结束一键 Boost" hidden><b><kbd>B</kbd> BOOST</b><span id="boostReadout">就绪</span></button>

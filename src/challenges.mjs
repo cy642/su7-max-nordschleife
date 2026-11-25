@@ -1,8 +1,9 @@
 import {gateBenchmarks} from './competition.mjs';
+import {activeRouteId, curvature, ROUTES} from './track.mjs';
 
 // Checkpoints use absolute race time, so pausing does not consume the allowance.
 export function checkpointPlan(length, difficulty='sport', vehicleId='max') {
-  const legs = length > 4000 ? 12 : 4;
+  const legs = Math.max(4, Math.min(12, Math.round(length / 1150)));
   const gates = Array.from({length: legs - 1}, (_, i) => length * (i + 1) / legs);
   if (difficulty === 'expert' || difficulty === 'master') {
     const times = gateBenchmarks([...gates,length], difficulty, vehicleId).map(point => point.time);
@@ -17,7 +18,22 @@ export function checkpointPlan(length, difficulty='sport', vehicleId='max') {
 }
 
 export function speedTraps(length) {
-  return length > 4000 ? [2700, 10300, 19750] : [420, 1630, 2860];
+  if (activeRouteId === 'nord') {
+    if (length === ROUTES.nord.length) return [2700, 10300, 19750];
+    if (length === ROUTES.nord.sprint) return [420, 1630, 2860];
+  }
+  // Pick a fast approach in each third. A line immediately after a hairpin
+  // should not reward braking later at the expense of making the next turn.
+  return [0, 1, 2].map(sector => {
+    const from = Math.round(length * (sector + .36) / 3);
+    const end = Math.round(length * (sector + .94) / 3);
+    let best = from, leastTurn = Infinity;
+    for (let s = from; s <= end; s += 16) {
+      const turn = Math.abs(curvature(s - 55, 22)) + Math.abs(curvature(s, 22)) + Math.abs(curvature(s + 30, 22));
+      if (turn < leastTurn) { best = s; leastTurn = turn; }
+    }
+    return best;
+  });
 }
 
 export function speedTrapTarget(length, difficulty, vehicleId) {

@@ -53,7 +53,7 @@ const phases = ['入弯', '弯心', '出弯'];
 
 export function racingLinePlan(length, difficulty) {
   const {halfWidth, pace, quota} = lineSetup[difficulty];
-  const count = length > 4000 ? 12 : 3;
+  const count = Math.max(3, Math.min(12, Math.round(length / 1250)));
   const gates = [];
   for (let i = 0; i < count; i++) {
     const from = Math.round(i * length / count + 165);

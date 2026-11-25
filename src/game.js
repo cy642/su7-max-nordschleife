@@ -4,7 +4,10 @@ import {RUNWAY,runwaySample,newRunwayTrial,stepRunwayTrial} from './airfield-run
 import {checkpointPlan,speedTraps,speedTrapTarget,crossingFraction,eliminationRounds,recordEliminationCrossings,cutOrder} from './challenges.mjs';
 import {paceSettings,rivalProfile,rivalRoad,rivalSpeed,competitionRecordGroup} from './competition.mjs';
 import * as T from 'three';
-import {carModel,setupStage,sample,curvature,section,place,LENGTH,STEP,mapPoints,trackPosts} from './scene.js';
+import {carModel,setupStage,place,section,trackPosts} from './scene.js';
+import {ROUTES,selectTrack,sample,curvature,LENGTH,STEP} from './track.mjs';
+import {createRouteWorlds} from './route-worlds.js';
+import {createMap} from './route-map.js';
 import {createContacts,footprint} from './contact.mjs';
 import {driveCar} from './driving.mjs';
 import {newBoost,toggleBoost,endBoost,supportsBoost,BOOST_SECONDS,BOOST_COOLDOWN} from './boost.mjs';
@@ -42,10 +45,9 @@ const poseKeys=['s','v','lane','h','steer','roll','pitch'];
 function remember(car){const prev=car.previous??={};for(const key of poseKeys)prev[key]=car[key]||0;}
 function present(car,alpha){const out=car.presentation??={};for(const key of poseKeys)out[key]=lerp(car.previous?.[key]??(car[key]||0),car[key]||0,alpha);return out;}
 const colors=[0xf2b661,0xd15c48,0x91b4a2,0xd0d8df,0x5d7191];
-const distances={sprint:3200,full:LENGTH};
-const practiceRoutes={
- carousel:{start:12550,end:13800}, garden:{start:15600,end:17300}, finale:{start:18700,end:LENGTH}
-};
+const sectorKeys=['carousel','garden','finale']; // Preserve existing Nürburgring record keys.
+let routeInfo=ROUTES.nord, mapRoute='',roadMap,worlds,raceScene;
+const raceLength=()=>mode==='full'?routeInfo.length:routeInfo.sprint;
 let eventType='race',difficulty='sport',sector='carousel',startDistance=0;
 let splits=[],previousSplits=[];
 let runwayScene,runwayTrial;
@@ -58,7 +60,7 @@ const challengeBriefs={
    return '对手领先 '+pursuitPlan(vehicle,difficulty).lead+' 米发车。在终点前追上并超过对手。';
  },
  get racingline(){
-   const plan=racingLinePlan(distances[mode],difficulty);
+   const plan=racingLinePlan(raceLength(),difficulty);
    return '按提示速度穿过黄门，蓝门预告下一处。'+plan.gates.length+' 门中至少命中 '+plan.required+' 门，每次失手加 '+MISS_SECONDS+' 秒。';
  },
  checkpoint:'在倒计时归零前过门，每过一门补时，撑到终点。',
@@ -109,7 +111,8 @@ function useBoost(){
 $('boostControl').addEventListener('pointerdown',e=>{if(e.button===0){e.preventDefault();useBoost();}});
 $('boostControl').addEventListener('click',e=>{if(e.detail===0)useBoost();});
 const lookDirection=new T.Vector3(0,-.072,1);
-let soundOn=false,ctx,osc,amp,wind,windGain,lowOsc,lowGain,tyreFilter,tyreGain;
+let soundOn=false,ctx,osc,amp,wind,windGain,lowOsc,lowGain,tyreFilter,tyreGain,tunnelEcho;
+let tunnelCover=0;
 function audioInit(){
  if(ctx)return;ctx=new (window.AudioContext||window.webkitAudioContext)();
  osc=ctx.createOscillator();amp=ctx.createGain();osc.type='sine';osc.frequency.value=75;amp.gain.value=0;osc.connect(amp).connect(ctx.destination);osc.start();
@@ -117,12 +120,17 @@ function audioInit(){
  const b=ctx.createBuffer(1,ctx.sampleRate*2,ctx.sampleRate),a=b.getChannelData(0);for(let i=0;i<a.length;i++)a[i]=Math.random()*2-1;
  const src=ctx.createBufferSource();src.buffer=b;src.loop=true;wind=ctx.createBiquadFilter();wind.type='lowpass';windGain=ctx.createGain();windGain.gain.value=0;src.connect(wind).connect(windGain).connect(ctx.destination);src.start();
  tyreFilter=ctx.createBiquadFilter();tyreFilter.type='bandpass';tyreFilter.Q.value=1.3;tyreGain=ctx.createGain();tyreGain.gain.value=0;src.connect(tyreFilter).connect(tyreGain).connect(ctx.destination);
+ const reflection=ctx.createDelay(.2),repeat=ctx.createGain();reflection.delayTime.value=.096;repeat.gain.value=.24;
+ tunnelEcho=ctx.createGain();tunnelEcho.gain.value=0;
+ amp.connect(reflection);tyreGain.connect(reflection);reflection.connect(repeat).connect(reflection);
+ reflection.connect(tunnelEcho).connect(ctx.destination);
 }
 function brakeLights(){return inputs.handbrake||(player.gear===-1?inputs.gas:inputs.brake);}
 function tractionInput(){return player.gear===-1?inputs.brake:inputs.gas;}
 function audioUpdate(){
  if(!ctx)return;
  const active=soundOn&&state==='race',t=ctx.currentTime,v=Math.abs(player.v);
+ tunnelEcho.gain.setTargetAtTime(active?.43*tunnelCover:0,t,.10);
  osc.frequency.setTargetAtTime(78+v*7.7,t,.07);lowOsc.frequency.setTargetAtTime(36+v*2.8,t,.08);
  amp.gain.setTargetAtTime(active?(.006+.023*(tractionInput()?1:.3))*Math.min(1,v/5):0,t,.05);
  lowGain.gain.setTargetAtTime(active&&v>1?.009:0,t,.07);
@@ -191,35 +199,58 @@ paintVehicleInfo();
 bind('garageWing',changeWing);bind('raceWing',changeWing);
 bind('camera',()=>{viewMode=(viewMode+1)%4;camFresh=true;announce(['追尾视角','远追视角','引擎盖视角','驾驶席视角'][viewMode],1.2);});
 function updateGarage(){
+ if(!ready)return;
+ if(mapRoute!==routeInfo.id){
+   selectTrack(routeInfo.id);mapRoute=routeInfo.id;roadMap=createMap(routeInfo);
+   roadMap.draw($('routeTrace').getContext('2d'),5);
+   $('routeTrace').title=routeInfo.name+'路线图，橙色为隧道路段';
+   for(const [i,option] of [...$('sector').options].entries()){
+     const segment=routeInfo.practice[i];
+     option.textContent=segment.name+' · '+((segment.end-segment.start)/1000).toFixed(2)+' km';
+   }
+   for(const b of buttons)b.querySelector('span').textContent=
+     (b.dataset.mode==='full'?routeInfo.length:routeInfo.sprint)/1000+' KM';
+ }
+ $('route').value=routeInfo.id;$('routeField').hidden=onRunway();
  buttons.forEach(b=>{const active=mode===b.dataset.mode;b.classList.toggle('on',active);b.setAttribute('aria-pressed',String(active));});
  $('difficultyField').hidden=!['race','elimination','checkpoint','speedtrap','pursuit','racingline'].includes(eventType);
  const testDrive=onRunway()||eventType==='freedrive';
  $('testVenue').hidden=!testDrive;$('quickAirfield').hidden=testDrive;
  for(const button of document.querySelectorAll('[data-test-venue]')){const active=button.dataset.testVenue===eventType;button.classList.toggle('on',active);button.setAttribute('aria-pressed',String(active));}
- $('venueName').textContent=onRunway()?'East Apron · 测试跑道':'Nürburgring Nordschleife';
- const brief=onRunway()?'测零百、跑 400 米，再停在 600 米黄框内。':eventType==='freedrive'?'独自驾驶北环，可随时暂停结束试驾。':challengeBriefs[eventType];$('challengeBrief').hidden=!brief;$('challengeBrief').textContent=brief||'';
+ $('venueName').textContent=onRunway()?'East Apron · 测试跑道':routeInfo.name;
+ const brief=onRunway()?'测零百、跑 400 米，再停在 600 米黄框内。':freeDrive()?'沿'+routeInfo.name+'自由驾驶，暂停可查看本次试驾报告。':challengeBriefs[eventType];$('challengeBrief').hidden=!brief;$('challengeBrief').textContent=brief||'';
  if(eventType==='speedtrap'){
-   $('challengeBrief').textContent='三道测速门取平均，本次达标线 '+speedTrapTarget(distances[mode],difficulty,vehicle.id)+' km/h。';
+   $('challengeBrief').textContent='三道测速门取平均，本次达标线 '+speedTrapTarget(raceLength(),difficulty,vehicle.id)+' km/h。';
  }else if(eventType==='checkpoint'){
-   const plan=checkpointPlan(distances[mode],difficulty,vehicle.id);
+   const plan=checkpointPlan(raceLength(),difficulty,vehicle.id);
    $('challengeBrief').textContent='起步有 '+plan.allowance.toFixed(1)+' 秒，每过一门补时。剩余时间可以带入下一段。';
  }
  $('courses').hidden=eventType==='practice'||testDrive;$('sectorField').hidden=eventType!=='practice';
- $('eventNote').textContent={race:'德国 · 纽博格林北环 / 6 车竞速',pursuit:'双车追击 / 抢先冲线',racingline:'走线训练 / 入弯、弯心、出弯',time:'单人计时 / 三段计时点',practice:'指定路段 / 单人练习',checkpoint:'限时闯关',elimination:'六车发车 / 两车决胜',speedtrap:'测速挑战',airfield:'机场 / 直线加速与精确停车',freedrive:'北环 / 自由试驾'}[eventType];
+ $('eventNote').textContent={race:'六车竞速 / 同级对抗',pursuit:'双车追击 / 抢先冲线',racingline:'走线训练 / 入弯、弯心、出弯',time:'单人计时 / 三段计时点',practice:'指定路段 / 单人练习',checkpoint:'限时闯关',elimination:'六车发车 / 两车决胜',speedtrap:'测速挑战',airfield:'机场 / 直线加速与精确停车',freedrive:'公路 / 自由试驾'}[eventType];
  if(ready)$('startLabel').textContent={race:'开始比赛',pursuit:'开始追击',racingline:'挑战走线',time:'开始计时',practice:'练习这段弯道',checkpoint:'开始闯关',elimination:'开始淘汰赛',speedtrap:'开始测速',airfield:'开始测试',freedrive:'开始试驾'}[eventType];
 }
 function saveRaceSetup(){
- try{localStorage.setItem('nordrun.raceSetup',JSON.stringify({eventType,mode,sector}));}catch{}
+ try{localStorage.setItem('nordrun.raceSetup',JSON.stringify({eventType,mode,sector,route:routeInfo.id}));}catch{}
 }
+for(const route of Object.values(ROUTES))$('route').add(new Option(route.name,route.id));
 try{
  const saved=JSON.parse(localStorage.getItem('nordrun.raceSetup'));
  if(saved){
    if([...$('event').options].some(option=>option.value===saved.eventType))eventType=saved.eventType;
-   if(Object.hasOwn(distances,saved.mode))mode=saved.mode;
-   if(Object.hasOwn(practiceRoutes,saved.sector))sector=saved.sector;
+   if(['sprint','full'].includes(saved.mode))mode=saved.mode;
+   if(sectorKeys.includes(saved.sector))sector=saved.sector;
+   if(Object.hasOwn(ROUTES,saved.route))routeInfo=ROUTES[saved.route];
    $('event').value=eventType;$('sector').value=sector;
  }
 }catch{}
+const linkedRoute=new URLSearchParams(location.search);
+if(Object.hasOwn(ROUTES,linkedRoute.get('route'))){
+ routeInfo=ROUTES[linkedRoute.get('route')];
+ if(linkedRoute.get('event')==='practice'){eventType='practice';sector=sectorKeys[0];}
+ else if(onRunway())eventType='race';
+ $('route').value=routeInfo.id;$('event').value=eventType;$('sector').value=sector;
+}
+$('route').onchange=e=>{routeInfo=ROUTES[e.target.value];updateGarage();saveRaceSetup();};
 buttons.forEach(b=>b.onclick=()=>{mode=b.dataset.mode;saveRaceSetup();updateGarage();});
 function selectEvent(value){eventType=value;$('event').value=value;saveRaceSetup();updateGarage();}
 $('event').onchange=e=>selectEvent(e.target.value);
@@ -291,8 +322,11 @@ function applyGraphics(){
 bind('pauseBtn',pause);
 function garage(){demoControls?.reset();closeDialog();resetKeys();state='garage';toggleShell(false);stage.garage.add(carRoot);carRoot.position.set(0,.015,0);carRoot.rotation.set(0,0,0);eye.clearViewOffset();camFresh=true;audioUpdate();}
 function startRace(){
- if(!ready)return;setCabinPreview(false);closeDialog();resetKeys();toggleShell(true);const route=onRunway()?{start:0,end:RUNWAY.target}:freeDrive()?{start:0,end:LENGTH}:eventType==='practice'?practiceRoutes[sector]:{start:0,end:distances[mode]};
+ if(!ready)return;setCabinPreview(false);closeDialog();resetKeys();toggleShell(true);
+ const route=eventType==='practice'?routeInfo.practice[sectorKeys.indexOf(sector)]:
+   {start:0,end:onRunway()?RUNWAY.target:freeDrive()?LENGTH:raceLength()};
  if(onRunway()){runwayScene??=createAirfieldScene(stage.world);runwayTrial=newRunwayTrial();}
+ raceScene=onRunway()?runwayScene:worlds.select(routeInfo);
  startDistance=route.start;total=route.end;splits=[];previousSplits=[];
  gateIndex=0;deadline=0;gateBonuses=[];radarSpeeds=[];radarTarget=0;rounds=[];gates=[];
  boost=newBoost();inputs.boost=false;
@@ -313,9 +347,10 @@ function startRace(){
    if(car.object.visible)rivals.push(car);
  }
  state='countdown';remaining=3;elapsed=0;viewMode=freeDrive()?3:0;alertLife=0;wasOff=false;
- Object.assign(player,{s:hasRivals()?-42:startDistance,lane:hasRivals()?2.25:0,v:0,gear:1,reverseHold:0,h:0,steer:0,roll:0,pitch:0,yawRate:0,slip:0,finish:null,contact:0});(onRunway()?runwayScene:stage.world).add(carRoot);stage.sprintFinish.visible=!onRunway()&&total<LENGTH;
+ Object.assign(player,{s:hasRivals()?-42:startDistance,lane:hasRivals()?2.25:0,v:0,gear:1,reverseHold:0,h:0,steer:0,roll:0,pitch:0,yawRate:0,slip:0,finish:null,contact:0});(onRunway()?runwayScene:worlds.actors).add(carRoot);stage.sprintFinish.visible=!onRunway()&&total<LENGTH;
  if(stage.sprintFinish.visible)place(stage.sprintFinish,total,0);
- const posts=trackPosts.map(post=>post.sprintOnly?{...post,s:total}:post);
+ const posts=(routeInfo.id==='nord'?trackPosts:trackPosts.filter(post=>post.sprintOnly))
+   .map(post=>post.sprintOnly?{...post,s:total}:post);
  driveStats=createTelemetry();sampleTelemetry(driveStats,player,0,inputs);demoControls?.reset();
  $('pauseBtn').textContent=inTestDrive()?'试驾菜单':'暂停';
  resolveContacts=onRunway()?null:createContacts(sample,STEP,LENGTH,posts);simAcc=0;
@@ -331,7 +366,8 @@ bind('startBtn',startRace);
 function announce(text,life=1){alertText=text;alertLife=life;}
 function bestKey(){
  const course=eventType==='practice'?sector:eventType==='airfield'?'runway':mode;
- const key=['nordrun.su7.v3',eventType,course,competitionRecordGroup(eventType,difficulty)].join('.');
+ const venue=routeInfo.id==='nord'||onRunway()?'':'.'+routeInfo.id;
+ const key=['nordrun.su7.v3',eventType,course,competitionRecordGroup(eventType,difficulty)].join('.')+venue;
  // Existing records were all set in the original Max.
  return vehicle.id==='max'?key:key+'.'+vehicle.id;
 }
@@ -349,7 +385,8 @@ function resultDialog(title,rows,promote=false){
  state='finished';updateHUD();
  let comparison='';
  if(inTestDrive()){
-   const report=testReport(eventType,vehicle.id,driveStats);comparison=report.comparison;
+   const venue=freeDrive()&&routeInfo.id!=='nord'?eventType+'.'+routeInfo.id:eventType;
+   const report=testReport(venue,vehicle.id,driveStats);comparison=report.comparison;
    rows.push(...report.rows.map(([label,v])=>resultRow(label,v)));
  }
  if(boost.uses)rows.push(resultRow('Boost 使用',boost.uses+' 次'));
@@ -528,8 +565,6 @@ function step(dt){
  if(state==='finished')return;
  if(!freeDrive()&&p.s>=total){elapsed=crossingTime(p,total,dt);finish();}
 }
-let minX=Infinity,minZ=Infinity,maxX=-Infinity,maxZ=-Infinity;
-for(const [x,z] of mapPoints){minX=Math.min(x,minX);maxX=Math.max(x,maxX);minZ=Math.min(z,minZ);maxZ=Math.max(z,maxZ);}
 function moveChallengeMarker(){
  const marker=stage.challengeMarker;
  for(const [offset,visual] of stage.lineMarkers.entries()){
@@ -547,15 +582,14 @@ function moveChallengeMarker(){
  }
 }
 function drawMap(){
- const c=$('mini').getContext('2d'),w=c.canvas.width,h=c.canvas.height,k=Math.min((w-20)/(maxX-minX),(h-12)/(maxZ-minZ));
+ const c=$('mini').getContext('2d'),w=c.canvas.width,h=c.canvas.height;
  if(onRunway()){
    c.clearRect(0,0,w,h);const y=h*.50,x=s=>15+clamp(s/620,0,1)*(w-30);
    c.fillStyle='#617173';c.fillRect(12,y-12,w-24,24);c.fillStyle='#eadcaa';c.fillRect(x(400),y-12,3,24);
    c.fillStyle='#e7a349';c.fillRect(x(590),y-12,x(610)-x(590),24);
    c.beginPath();c.arc(x(player.s),y+player.lane*1.5,7,0,2*Math.PI);c.fillStyle='#78fff1';c.fill();return;
  }
- const pt=(x,z)=>[(x-(minX+maxX)/2)*k+w/2,(z-(minZ+maxZ)/2)*k+h/2];c.clearRect(0,0,w,h);c.lineJoin='round';
- c.beginPath();mapPoints.forEach(([x,z],i)=>{const p=pt(x,z);if(i)c.lineTo(...p);else c.moveTo(...p);});c.closePath();c.strokeStyle='#789196';c.lineWidth=2.7;c.stroke();
+ const pt=roadMap.draw(c,8);
  if(total-startDistance<LENGTH){c.beginPath();for(let s=startDistance;s<total+28;s+=28){const p=sample(Math.min(s,total)),v=pt(p.x,p.z);if(s>startDistance)c.lineTo(...v);else c.moveTo(...v);}c.strokeStyle='#74e2d9';c.lineWidth=4;c.stroke();}
  if(nextGate()<total){const g=sample(nextGate()),[x,y]=pt(g.x,g.z);c.strokeStyle='#ffdc81';c.lineWidth=2;c.strokeRect(x-4,y-4,8,8);}
  for(const r of [...rivals,player]){const p=sample(r.s),pos=pt(p.x,p.z);c.beginPath();c.arc(...pos,r===player?5.5:3.4,0,2*Math.PI);c.fillStyle=r===player?'#80fff2':'#f7ab72';c.fill();if(r===player){c.strokeStyle='#103b46';c.lineWidth=2;c.stroke();}}
@@ -683,7 +717,7 @@ function renderFrame(dt,alpha=1){
  eye.lookAt(look);
  const fov=(portrait?(viewMode===2?73:75):(viewMode===2?67:54))+Math.abs(car.v)*.068;
  smoothFov=camFresh?fov:damp(smoothFov,fov,3.5,dt);camFresh=false;
- eye.fov=smoothFov;eye.far=1450;eye.near=.12;
+ eye.fov=smoothFov;eye.far=onRunway()||routeInfo.id==='nord'?1450:7000;eye.near=.12;
  if(reversing&&viewMode>=2){
    desired.copy(model.rearEye()).applyQuaternion(carRoot.quaternion).add(carRoot.position);
    look.set(0,-.11,-1).applyQuaternion(carRoot.quaternion).multiplyScalar(18).add(desired);
@@ -695,7 +729,8 @@ function renderFrame(dt,alpha=1){
    eye.position.copy(desired);eye.lookAt(look);eye.fov=portrait?82:68;eye.near=.035;
  }
  eye.updateProjectionMatrix();
- renderer.render(onRunway()?runwayScene:stage.world,eye);
+ tunnelCover=onRunway()?0:worlds.update(car.s,elapsed);
+ renderer.render(raceScene,eye);
 }
 function frame(t){
  requestAnimationFrame(frame);if(!ready||document.hidden)return;
@@ -766,17 +801,18 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden){resetKeys(
 async function boot(){
  renderer=new T.WebGLRenderer({canvas:gameCanvas,antialias:true,powerPreference:'high-performance'});renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=1.03;
  resize();[stage,model]=await Promise.all([setupStage(renderer),carModel(modelBytes)]);carRoot.add(model.object);
+ worlds=createRouteWorlds(stage);
  model.updateWing(0);
  for(let i=0;i<5;i++){
    const object=new T.LOD();
    object.addLevel(model.makeOpponent(colors[i]),0);
    object.addLevel(model.makeDistant(colors[i]),30,.12);
-   stage.world.add(object);
+   worlds.actors.add(object);
    carPool.push({name:carNames[i],object,home:(i%2?1:-1)*(1.5+.22*i)});
  }
  demoControls=createTestDriveControls(carRoot);demoControls.setVehicle(vehicle.id);demoControls.bindPanel($('driveTools'),()=>soundOn);
  model.setVehicle(vehicle.id);model.updateWing(0);applyGraphics();stage.garage.add(carRoot);ready=true;$('startBtn').disabled=false;updateGarage();showWing();garage();frame(performance.now());
- if(location.search.includes('qa=1'))window.__qa={state:()=>({state,vehicleId:vehicle.id,boost:boostStatus(),testStats:{...driveStats},s:player.s,lane:player.lane,heading:player.h,speed:player.v,gear:player.gear??1,wing,wingOpen,rank:rank(),total,elapsed,eventType,difficulty,sector,startDistance,gateIndex,gates:[...gates],deadline,runway:onRunway()?{...runwayTrial}:null,radarSpeeds:[...radarSpeeds],splits:[...splits],rivals:rivals.map(r=>({s:r.s,v:r.v,finish:r.finish})),viewMode}),advance:(seconds)=>{for(let i=0;i<seconds/PHYSICS_DT;i++)step(PHYSICS_DT);updateHUD();},info:()=>renderer.info.render,render:()=>renderFrame(1/60)};
+ if(location.search.includes('qa=1'))window.__qa={state:()=>({state,routeId:onRunway()?'airfield':routeInfo.id,vehicleId:vehicle.id,boost:boostStatus(),testStats:{...driveStats},s:player.s,lane:player.lane,heading:player.h,speed:player.v,gear:player.gear??1,wing,wingOpen,rank:rank(),total,elapsed,eventType,difficulty,sector,startDistance,gateIndex,gates:[...gates],deadline,runway:onRunway()?{...runwayTrial}:null,radarSpeeds:[...radarSpeeds],splits:[...splits],rivals:rivals.map(r=>({s:r.s,v:r.v,finish:r.finish})),viewMode}),advance:(seconds)=>{for(let i=0;i<seconds/PHYSICS_DT;i++)step(PHYSICS_DT);updateHUD();},info:()=>renderer.info.render,render:()=>renderFrame(1/60)};
  if(window.__qa)window.__qa.club=()=>({
    pursuitLead:pursuit?.lead??null,
    line:racingLine?{...racingLine,gates:racingLine.gates.map(gate=>({...gate}))}:null

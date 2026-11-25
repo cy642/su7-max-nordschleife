@@ -1,4 +1,4 @@
-import {curvature, LENGTH, mod, sample} from './track.mjs';
+import {activeRouteId, curvature, LENGTH, mod, sample} from './track.mjs';
 import {getVehicle} from './vehicles.mjs';
 
 // The field runs in the selected car's performance class. Each driver follows
@@ -9,19 +9,23 @@ export const paceSettings = {
   expert: {label:'专家', corner:1.43, power:.96, brake:.90, top:.97, line:.65},
   master: {label:'大师', corner:1.80, power:1, brake:.98, top:1, line:.85}
 };
-const nodeCount = Math.ceil(LENGTH / 8), spacing = LENGTH / nodeCount;
-const course = new Map();
-let turns, slopes;
-function survey() {
-  turns = Float32Array.from({length:nodeCount}, (_, i) => Math.abs(curvature(i * spacing, 15)));
-  slopes = Float32Array.from({length:nodeCount}, (_, i) => sample(i * spacing).grade);
+const surveys = new Map();
+function currentSurvey() {
+  if (!surveys.has(activeRouteId)) {
+    const nodeCount = Math.ceil(LENGTH / 8), spacing = LENGTH / nodeCount;
+    const turns = Float32Array.from({length:nodeCount}, (_, i) => Math.abs(curvature(i * spacing, 15)));
+    const slopes = Float32Array.from({length:nodeCount}, (_, i) => sample(i * spacing).grade);
+    surveys.set(activeRouteId, {length:LENGTH, nodeCount, spacing, turns, slopes, profiles:new Map()});
+  }
+  return surveys.get(activeRouteId);
 }
 
 export function rivalProfile(tier, vehicleId) {
   const vehicle = getVehicle(vehicleId);
   const key = vehicle.id + '.' + tier;
-  if (course.has(key)) return course.get(key);
-  if (!turns) survey();
+  const survey = currentSurvey();
+  const {profiles, turns, slopes, nodeCount, spacing} = survey;
+  if (profiles.has(key)) return profiles.get(key);
   const skill = paceSettings[tier] ?? paceSettings.sport;
   const car = vehicle.physics;
   const top = vehicle.topSpeed / 3.6 * skill.top;
@@ -35,18 +39,19 @@ export function rivalProfile(tier, vehicleId) {
     limits[index] = Math.min(limits[index], Math.sqrt(limits[next] ** 2 + 2 * decel * spacing));
   }
   const profile = {
-    skill, limits, braking,
+    skill, limits, braking, survey,
     acceleration(speed, grade) {
       const motor = Math.min(car.launch, car.specificPower / Math.max(1, speed));
       return motor * skill.power - car.drag * speed ** 2 - .14 - 9.81 * grade;
     }
   };
-  course.set(key, profile);
+  profiles.set(key, profile);
   return profile;
 }
 
 export function rivalRoad(profile, distance) {
-  const t = mod(distance, LENGTH) / spacing, i = Math.floor(t), f = t - i, next = (i + 1) % nodeCount;
+  const {length, slopes, nodeCount, spacing} = profile.survey;
+  const t = mod(distance, length) / spacing, i = Math.floor(t) % nodeCount, f = t - Math.floor(t), next = (i + 1) % nodeCount;
   return {
     target:profile.limits[i] * (1 - f) + profile.limits[next] * f,
     grade:slopes[i] * (1 - f) + slopes[next] * f
@@ -64,6 +69,7 @@ export function rivalSpeed(profile, speed, target, grade, grid, dt) {
 // A solo standing start sets achievable benchmarks for each car. Integrate
 // along the track once per profile, then interpolate at the actual gate lines.
 function referenceAt(profile, distance) {
+  const {slopes, nodeCount, spacing} = profile.survey;
   if (!profile.times) {
     const times = new Float64Array(nodeCount + 1), speeds = new Float32Array(nodeCount + 1);
     for (let i = 0; i < nodeCount; i++) {
