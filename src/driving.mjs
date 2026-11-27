@@ -34,7 +34,8 @@ function updateSpeed(car, input, grade, shoulder, wing, vehicle, dt) {
   const power = setup.specificPower * (input.boost && supportsBoost(vehicle.id) ? 1.24 : 1);
   const drive = Math.min(setup.launch, power / Math.max(1, oldSpeed));
   const regen = throttle || brake || handbrake ? 0 : 1.15 * smoothstep(0, 7, oldSpeed);
-  const drag = (setup.drag + wing * .000075) * oldSpeed ** 2 + .14 + grade * 9.81;
+  const draft = clamp(Number(input.draft || 0), 0, 1);
+  const drag = (setup.drag + wing * .000075) * oldSpeed ** 2 * (1 - .38 * draft) + .14 + grade * 9.81;
   const braking = Math.max(brake * mix(setup.brakes, 6.1, shoulder), handbrake * mix(7.6, 4.8, shoulder));
   const acc = drive * throttle * (1 - shoulder * .33) - braking - regen - drag
     - shoulder * (1.6 + .0028 * oldSpeed ** 2);

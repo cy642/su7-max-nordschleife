@@ -43,6 +43,7 @@ header{position:absolute;z-index:5;left:3.4%;right:3.4%;top:max(22px,env(safe-ar
  .touch-device #mini{height:41px}.touch-device .mapbox strong{font-size:10px}.touch-device .mapbox .micro{display:none}
  .touch-device .alert{bottom:auto;top:22%;font-size:11px}.touch-device .count{top:31%}
  .touch-device .dialog{max-height:calc(100dvh - 12px);padding:14px 18px}.touch-device .dialog h2{font-size:22px;margin:0 0 6px}
+ .touch-device .draftBadge{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(var(--bottom) + clamp(30px,9vh,54px) + 24px)}
 }
 @media (orientation:landscape) and (max-height:360px) {
  .touch-device .garageInfo{top:54px}.touch-device .garageInfo .stats{display:none}
@@ -107,6 +108,8 @@ header{position:absolute;z-index:5;left:3.4%;right:3.4%;top:max(22px,env(safe-ar
 @media(max-height:360px) and (orientation:landscape){.garageInfo .color{display:none}.garageInfo .setup{margin-top:4px}}
 #appUpdate{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
 #appUpdate.available{color:#bffff8;border-color:var(--aqua);background:#153b40}
+.draftBadge{display:inline-block;margin-bottom:4px;padding:2px 8px;border-radius:3px;background:#3b2a6ecc;color:#dccfff;font:600 11px Consolas,monospace;letter-spacing:.1em}
+#position.behind{color:#ffae82}#position.ahead{color:#8dffc8}
 </style></head><body><main id="app">
 <canvas id="view" aria-label="三维赛车画面"></canvas>
 <div class="shade" id="shade"></div>
@@ -120,16 +123,16 @@ header{position:absolute;z-index:5;left:3.4%;right:3.4%;top:max(22px,env(safe-ar
 <label for="route">赛道</label><select id="route" aria-label="选择赛道场景"></select><canvas id="routeTrace" width="124" height="52" aria-label="赛道平面图，橙色表示隧道"></canvas>
 </div><div class="race-options">
 <label>玩法<select id="event">
-<optgroup label="同场对抗"><option value="race">六车竞速</option><option value="pursuit">追击赛</option><option value="elimination">淘汰赛</option></optgroup>
+<optgroup label="同场对抗"><option value="race">六车竞速</option><option value="pursuit">追击赛</option><option value="elimination">淘汰赛</option><option value="championship">巡回锦标赛</option></optgroup>
 <optgroup label="单人挑战"><option value="racingline">弯道走线</option><option value="checkpoint">限时闯关</option><option value="speedtrap">测速挑战</option><option value="time">个人计时</option></optgroup>
 <optgroup label="练习与试驾"><option value="practice">弯道练习</option><option value="airfield">机场性能测试</option><option value="freedrive">公路自由试驾</option></optgroup>
 </select></label>
 <label id="difficultyField">赛事难度<select id="difficulty"><option value="club">入门</option><option value="sport" selected>运动</option><option value="expert">专家</option><option value="master">大师</option></select></label>
 </div><div class="segments" id="courses" aria-label="赛程"><button class="seg on" data-mode="sprint">短程冲刺 <span>3.2 KM</span></button><button class="seg" data-mode="full">赛道全圈 <span>20.832 KM</span></button></div><div class="segments" id="testVenue" aria-label="试驾场地" hidden><button class="seg" data-test-venue="airfield">机场性能测试</button><button class="seg" data-test-venue="freedrive">公路自由试驾</button></div><label id="sectorField" hidden>练习路段<select id="sector"><option value="carousel">卡鲁塞尔 · 1.25 km</option><option value="garden">植物园 · 1.70 km</option><option value="finale">长直道至终点 · 2.13 km</option></select></label><div class="launchActions"><button class="go" id="startBtn" disabled><span id="startLabel">载入车模…</span><b>↗</b></button><button id="quickAirfield" class="small">线上试驾</button></div><p id="challengeBrief" hidden></p></div></section>
-<div id="garageFoot" class="garageFoot"><div class="trackTag"><strong id="venueName">Nürburgring Nordschleife</strong><span class="micro" id="eventNote">德国 · 纽博格林北环 / 6 车竞速</span></div><div class="actions"><span class="hint dragHint">拖动环视车身</span><a id="appUpdate" class="small" href="nordrun://update/check" hidden>检查更新</a><button class="small" id="previewCabin" aria-pressed="false">看座舱</button><button class="small" id="garageWing">尾翼 · 收起</button></div></div>
+<div id="garageFoot" class="garageFoot"><div class="trackTag"><strong id="venueName">Nürburgring Nordschleife</strong><span class="micro" id="eventNote">德国 · 纽博格林北环 / 6 车竞速</span></div><div class="actions"><span class="hint dragHint">拖动环视车身</span><a id="appUpdate" class="small" href="nordrun://update/check" hidden>检查更新</a><button class="small" id="dailyBtn">每日挑战</button><button class="small" id="previewCabin" aria-pressed="false">看座舱</button><button class="small" id="garageWing">尾翼 · 收起</button></div></div>
 <section class="hud" id="hud" hidden><div class="progress" id="progress"></div><div class="hudTop"><div class="panel"><small id="metricLabel">排名 / POS</small><b id="position">6/6</b></div><div class="panel"><small id="clockLabel">用时 / TIME</small><b id="clock">0:00.00</b></div><div class="panel"><small id="distanceLabel">剩余 / KM</small><b id="remain">3.20</b></div></div>
 <button id="boostControl" type="button" aria-pressed="false" title="开启或结束一键 Boost" hidden><b><kbd>B</kbd> BOOST</b><span id="boostReadout">就绪</span></button>
-<div class="mapbox"><canvas id="mini" width="360" height="174"></canvas><strong id="sectionName">T13</strong><div class="micro" id="sectionCn">起终点</div></div><div class="telemetry"><div class="speed" id="speed">0</div><div class="speedunit mono"><b id="gear">D</b> KM/H</div><div class="power"><i id="power"></i></div><div class="hudActions"><div id="driveTools" hidden></div><button id="raceWing" class="small">R 尾翼 · 收起</button><button id="camera" class="small">C 视角</button></div></div>
+<div class="mapbox"><canvas id="mini" width="360" height="174"></canvas><strong id="sectionName">T13</strong><div class="micro" id="sectionCn">起终点</div></div><div class="telemetry"><div id="draftBadge" class="draftBadge" hidden>尾流</div><div class="speed" id="speed">0</div><div class="speedunit mono"><b id="gear">D</b> KM/H</div><div class="power"><i id="power"></i></div><div class="hudActions"><div id="driveTools" hidden></div><button id="raceWing" class="small">R 尾翼 · 收起</button><button id="ghostToggle" class="small" hidden>G 幽灵 · 开</button><button id="camera" class="small">C 视角</button></div></div>
 <div class="cornerHint mono" id="cornerHint" hidden></div><div id="count" class="count"></div><div id="alert" class="alert" hidden></div><div class="touch"><div id="steerPad" role="slider" tabindex="0" aria-label="方向，向两侧滑动转向" aria-valuemin="-100" aria-valuemax="100" aria-valuenow="0"><span aria-hidden="true">◀</span><span aria-hidden="true">▶</span></div><div><button data-key="handbrake">手刹</button><button data-key="brake" aria-label="刹车，停稳后长按倒车">刹车<small>长按倒车</small></button><button class="throttle" data-key="gas">加速</button></div></div></section>
 <div class="veil" id="modal" hidden><div class="dialog" role="dialog" aria-modal="true"><h2 id="dialogTitle"></h2><div id="dialogBody"></div><button class="go" id="primary"></button><button class="small" id="secondary" hidden></button><button class="small" id="tertiary" hidden></button></div></div><div id="error" class="note" hidden></div>
 </main><script>__BUNDLE__</script></body></html>
