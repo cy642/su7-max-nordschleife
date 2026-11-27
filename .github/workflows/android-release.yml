@@ -55,7 +55,7 @@ jobs:
             NORDRUN_KEYSTORE=/tmp/nordrun.keystore python3 android/build.py "Nordrun-${VERSION}.apk"
             echo "SIGNED_RELEASE=true" >> "$GITHUB_ENV"
           else
-            python3 android/build.py --debug "Nordrun-${VERSION}-debug.apk"
+            python3 android/build.py --debug "Nordrun-${VERSION}.apk"
             echo "SIGNED_RELEASE=false" >> "$GITHUB_ENV"
           fi
 
@@ -66,11 +66,26 @@ jobs:
           path: Nordrun-*.apk
 
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/android-v') && env.SIGNED_RELEASE == 'true'
+        if: startsWith(github.ref, 'refs/tags/android-v')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" "Nordrun-${APK_VERSION}.apk" \
-            --title "北环竞速 Android v${APK_VERSION}" \
-            --notes "2.0 大版本更新：全新 GT 展厅与赛道仪表 UI、重构地图引擎并新增秋名云海/碧海樱岬/霓虹都会/熔岩秘境 4 条赛道（共 9 条）、动态天气系统、漂移大师玩法与连击氮气充能、8 色车漆涂装与 4 档底盘调校、12 项车手成就、九城大满贯锦标赛、安卓原生震动反馈。" \
-            --latest
+          NOTES="北环竞速 2.0 大版本更新：
+          - 支持 **双通道在线更新**：应用内自动检查并一键在线热更新最新线上网页资源（无需重装 APK），同时保留新版 APK 整包更新。
+          - 全新 GT 展厅车库与赛道遥测仪表 HUD（弧形速度环、实时 G 值球、8 色车漆涂装、4 档底盘调校）。
+          - 地图引擎全面重构，新增 4 条赛道（秋名云海、碧海樱岬、霓虹都会、熔岩秘境），总计 9 条赛道，弯道配备路缘石与箭头牌。
+          - 新增动态天气（晴朗/黄昏/暴雨/浓雾）、漂移大师模式与连击氮气充能、九城大满贯、12 项车手成就、安卓原生震动反馈。"
+          if [ "${SIGNED_RELEASE}" != "true" ]; then
+            NOTES="${NOTES}
+
+          > 提示：本安装包采用全新签名构建，如手机上已安装旧版 1.6.1 请先卸载旧版后再安装 2.0.0；安装后即可享受内置线上热更新。"
+          fi
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" "Nordrun-${APK_VERSION}.apk" --clobber
+            gh release edit "${GITHUB_REF_NAME}" --latest --notes "${NOTES}"
+          else
+            gh release create "${GITHUB_REF_NAME}" "Nordrun-${APK_VERSION}.apk" \
+              --title "北环竞速 ${APK_VERSION} · 2.0 大改版与在线热更新" \
+              --notes "${NOTES}" \
+              --latest
+          fi

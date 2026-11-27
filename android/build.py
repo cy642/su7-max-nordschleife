@@ -63,8 +63,20 @@ with tempfile.TemporaryDirectory() as tmp:
     run(tool(bt, "aapt2"), "link", "--manifest", here / "AndroidManifest.xml", "-I", android,
         "--min-sdk-version", "28", "--target-sdk-version", "35", "--version-code", VERSION_CODE,
         "--version-name", VERSION_NAME, "-o", apk, resources)
+    commit = ""
+    try:
+        commit = subprocess.check_output(
+            ["git", "-C", str(here.parent), "rev-parse", "HEAD"], text=True
+        ).strip()
+    except Exception:
+        commit = ""
+    build_info = temp / "BuildInfo.java"
+    build_info.write_text(
+        f'package io.github.cy642.nordrun;\nfinal class BuildInfo {{ static final String COMMIT = "{commit}"; }}\n',
+        encoding="utf-8",
+    )
     run(tool(jdk, "javac"), "-encoding", "UTF-8", "-source", "8", "-target", "8",
-        "-classpath", android, "-d", classes, *sorted(here.glob("*.java")))
+        "-classpath", android, "-d", classes, *sorted(here.glob("*.java")), build_info)
     with zipfile.ZipFile(temp / "code.jar", "w", compression=zipfile.ZIP_STORED) as jar_bundle:
         for cls in sorted(classes.rglob("*.class")):
             jar_bundle.write(cls, cls.relative_to(classes).as_posix())

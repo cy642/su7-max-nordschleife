@@ -16,6 +16,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
+import java.io.RandomAccessFile;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -30,14 +31,36 @@ import javax.net.ssl.HttpsURLConnection;
 final class ReleaseSource {
     private static final String REPO = "cy642/su7-max-nordschleife";
     private static final String API = "https://api.github.com/repos/" + REPO + "/releases";
+    private static final String COMMIT_API = "https://api.github.com/repos/" + REPO + "/commits/main";
+    private static final String PAGES_HTML = "https://cy642.github.io/su7-max-nordschleife/index.html";
+    private static final String RAW_HTML = "https://raw.githubusercontent.com/" + REPO + "/";
     private static final String DOWNLOAD = "https://github.com/" + REPO + "/releases/download/";
     private static final Pattern VERSION = Pattern.compile("(?:0|[1-9][0-9]{0,8})(?:\\.(?:0|[1-9][0-9]{0,8})){2}");
     private static final Pattern DIGEST = Pattern.compile("sha256:[0-9a-f]{64}");
+    private static final Pattern COMMIT_SHA = Pattern.compile("[0-9a-f]{40}");
     private static final long MAX_APK_SIZE = 256L * 1024 * 1024;
+    private static final long MAX_WEB_SIZE = 64L * 1024 * 1024;
+    private static final long MIN_WEB_SIZE = 500L * 1024;
     private static final int MAX_METADATA_SIZE = 2 * 1024 * 1024;
     private static final int SIGNATURES = PackageManager.GET_SIGNING_CERTIFICATES;
 
     private ReleaseSource() {}
+
+    static final class WebUpdate {
+        final String sha, shortSha, message;
+
+        WebUpdate(String sha, String message) throws IOException {
+            if (sha == null || !COMMIT_SHA.matcher(sha).matches()) {
+                throw new IOException("线上资源版本信息异常");
+            }
+            this.sha = sha;
+            this.shortSha = sha.substring(0, 7);
+            String clean = message == null ? "" : message.trim();
+            int nl = clean.indexOf('\n');
+            if (nl >= 0) clean = clean.substring(0, nl).trim();
+            this.message = clean.length() > 160 ? clean.substring(0, 160) : clean;
+        }
+    }
 
     static final class Release {
         final String version, notes;
@@ -308,6 +331,117 @@ final class ReleaseSource {
         StringBuilder result = new StringBuilder("sha256:");
         for (byte b : hash.digest()) result.append(hex[(b >>> 4) & 15]).append(hex[b & 15]);
         return result.toString();
+    }
+
+    static WebUpdate checkWeb(String installedSha) throws IOException {
+        try {
+            JSONObject data = new JSONObject(metadata(COMMIT_API));
+            String sha = data.optString("sha", "");
+            if (!COMMIT_SHA.matcher(sha).matches()) return null;
+            if (installedSha != null && installedSha.equalsIgnoreCase(sha)) return null;
+            JSONObject commit = data.optJSONObject("commit");
+            String msg = commit == null ? "" : commit.optString("message", "");
+            return new WebUpdate(sha, msg);
+        } catch (JSONException e) {
+            throw new IOException("暂时无法读取线上资源信息，请稍后重试", e);
+        }
+    }
+
+    private static HttpsURLConnection openWebUrl(String startUrl) throws IOException {
+        URL url = new URL(startUrl);
+        for (int redirects = 0; redirects <= 4; redirects++) {
+            checkCancelled();
+            HttpsURLConnection http = connection(url);
+            boolean keep = false;
+            try {
+                int status = http.getResponseCode();
+                if (status == 200) {
+                    keep = true;
+                    return http;
+                }
+                String location = http.getHeaderField("Location");
+                if (!(status == 301 || status == 302 || status == 303 || status == 307 || status == 308) || location == null) {
+                    throw new IOException("线上资源下载失败 (" + status + ")");
+                }
+                URL next = new URL(url, location);
+                String host = next.getHost();
+                boolean allowed = host.equals("cy642.github.io") || host.equals("raw.githubusercontent.com")
+                        || host.equals("objects.githubusercontent.com");
+                if (!"https".equals(next.getProtocol()) || !allowed) {
+                    throw new IOException("线上资源地址异常");
+                }
+                url = next;
+            } finally {
+                if (!keep) http.disconnect();
+            }
+        }
+        throw new IOException("线上资源重定向过多");
+    }
+
+    private static void validateWebHtml(File file) throws IOException {
+        long len = file.length();
+        if (len < MIN_WEB_SIZE || len > MAX_WEB_SIZE) {
+            throw new IOException("线上资源大小异常，请重试");
+        }
+        byte[] head = new byte[128];
+        byte[] tail = new byte[128];
+        try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
+            raf.readFully(head);
+            raf.seek(len - tail.length);
+            raf.readFully(tail);
+        }
+        String start = new String(head, StandardCharsets.UTF_8).toLowerCase(java.util.Locale.ROOT);
+        String end = new String(tail, StandardCharsets.UTF_8).toLowerCase(java.util.Locale.ROOT);
+        if (!start.contains("<!doctype html>") || !end.contains("</html>")) {
+            throw new IOException("线上资源校验失败，请重试");
+        }
+    }
+
+    static synchronized File downloadWeb(Context context, WebUpdate update, Progress progress) throws IOException {
+        File dir = new File(context.getFilesDir(), "web");
+        if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException("无法创建更新目录");
+        File target = new File(dir, "index.html");
+        File part = new File(dir, "index.part.html");
+        String[] sources = {
+            PAGES_HTML + "?v=" + update.shortSha,
+            RAW_HTML + update.sha + "/index.html"
+        };
+        IOException lastError = null;
+        for (String src : sources) {
+            boolean saved = false;
+            try {
+                HttpsURLConnection http = openWebUrl(src);
+                try (InputStream in = http.getInputStream(); FileOutputStream out = new FileOutputStream(part)) {
+                    long total = http.getContentLengthLong();
+                    if (total <= 0) total = 12_000_000L;
+                    byte[] buffer = new byte[64 * 1024];
+                    long received = 0;
+                    int n;
+                    while ((n = in.read(buffer)) != -1) {
+                        checkCancelled();
+                        received += n;
+                        if (received > MAX_WEB_SIZE) throw new IOException("线上资源体积超出限制");
+                        out.write(buffer, 0, n);
+                        if (progress != null) progress.onProgress(received, Math.max(total, received));
+                    }
+                } finally {
+                    http.disconnect();
+                }
+                validateWebHtml(part);
+                checkCancelled();
+                if (target.exists() && !target.delete()) throw new IOException("无法替换旧版资源");
+                if (!part.renameTo(target)) throw new IOException("无法保存线上资源");
+                saved = true;
+                return target;
+            } catch (InterruptedIOException e) {
+                throw e;
+            } catch (IOException e) {
+                lastError = e;
+            } finally {
+                if (!saved) part.delete();
+            }
+        }
+        throw lastError == null ? new IOException("线上资源下载失败，请稍后重试") : lastError;
     }
 
     private static void checkCancelled() throws InterruptedIOException {

@@ -14,6 +14,7 @@ import android.provider.Settings;
 import android.webkit.WebView;
 import android.widget.ProgressBar;
 import java.io.File;
+import java.io.IOException;
 import java.util.Locale;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
@@ -38,8 +39,16 @@ final class UpdateController {
     private boolean foreground, destroyed, checking, manualCheck;
     private AlertDialog dialog;
     private Runnable onReturn;
-    // Saved only while Android settings owns the foreground.
     private ReleaseSource.Release waitingForPermission;
+
+    private static final class CheckOutcome {
+        final ReleaseSource.Release apk;
+        final ReleaseSource.WebUpdate web;
+        CheckOutcome(ReleaseSource.Release apk, ReleaseSource.WebUpdate web) {
+            this.apk = apk;
+            this.web = web;
+        }
+    }
 
     UpdateController(Activity activity, WebView game, Bundle state) {
         this.activity = activity;
@@ -52,13 +61,28 @@ final class UpdateController {
         }
         preferences = app.getSharedPreferences("update-check", Context.MODE_PRIVATE);
         if (!version.equals(preferences.getString("installed", ""))) {
-            preferences.edit().clear().putString("installed", version).apply();
+            preferences.edit().clear()
+                    .putString("installed", version)
+                    .putString("web-sha", BuildInfo.COMMIT)
+                    .apply();
+            new File(new File(app.getFilesDir(), "web"), "index.html").delete();
         }
         if (state != null && version.equals(state.getString("update-installed")) && state.containsKey("update-permission")) {
             try {
                 waitingForPermission = ReleaseSource.Release.fromJson(new JSONObject(state.getString("update-permission")));
-            } catch (Exception ignored) { /* A new manual check can always start from scratch. */ }
+            } catch (Exception ignored) { }
         }
+    }
+
+    File activeWebBundle() {
+        if (!version.equals(preferences.getString("web-app-version", ""))) return null;
+        File file = new File(new File(app.getFilesDir(), "web"), "index.html");
+        return file.isFile() && file.length() > 500_000L ? file : null;
+    }
+
+    private String currentWebSha() {
+        String saved = preferences.getString("web-sha", "");
+        return saved.isEmpty() ? BuildInfo.COMMIT : saved;
     }
 
     void saveState(Bundle state) {
@@ -162,33 +186,64 @@ final class UpdateController {
         check(true);
     }
 
+    private CheckOutcome queryUpdates() throws IOException {
+        ReleaseSource.Release apk = null;
+        IOException apkError = null;
+        try {
+            apk = ReleaseSource.check(app);
+        } catch (IOException e) {
+            apkError = e;
+        }
+        if (apk != null) return new CheckOutcome(apk, null);
+        try {
+            ReleaseSource.WebUpdate web = ReleaseSource.checkWeb(currentWebSha());
+            return new CheckOutcome(null, web);
+        } catch (IOException webError) {
+            if (apkError != null) throw apkError;
+            return new CheckOutcome(null, null);
+        }
+    }
+
     private void check(boolean manual) {
         if (manual) {
             manualCheck = true;
             show(new AlertDialog.Builder(activity).setTitle("检查更新")
-                    .setMessage("正在查询新版本…").setOnCancelListener(ignored -> cancel())
+                    .setMessage("正在查询新版安装包与线上资源…").setOnCancelListener(ignored -> cancel())
                     .setNegativeButton("取消", (d, which) -> cancel()));
         }
         if (checking) return;
         checking = true;
-        run(() -> ReleaseSource.check(app), release -> {
+        run(this::queryUpdates, outcome -> {
             checking = false;
+            String label = outcome.apk != null ? outcome.apk.version : (outcome.web != null ? "在线新版" : "");
             preferences.edit().putLong("next-check", System.currentTimeMillis() + CHECK_INTERVAL_MS)
-                    .putString("available", release == null ? "" : release.version).apply();
+                    .putString("available", label).apply();
             publishVersion();
             if (!manualCheck) return;
             manualCheck = false;
             dismiss();
             showWhenVisible(() -> {
-                if (release == null) {
-                    show(new AlertDialog.Builder(activity).setTitle("已是最新版本")
-                            .setMessage("北环竞速 " + version).setPositiveButton("完成", null));
-                } else {
+                if (outcome.apk != null) {
+                    ReleaseSource.Release release = outcome.apk;
                     String message = "当前 " + version + "  →  " + release.version + "    " + fileSize(release.size);
                     if (!release.notes.isEmpty()) message += "\n\n" + release.notes;
                     show(new AlertDialog.Builder(activity).setTitle("发现新版本 " + release.version)
                             .setMessage(message).setNegativeButton("稍后", null)
                             .setPositiveButton("立即更新", (d, which) -> prepare(release)));
+                } else if (outcome.web != null) {
+                    ReleaseSource.WebUpdate web = outcome.web;
+                    String message = "发现线上新内容（" + web.shortSha + "），无需重装 APK 即可直接在线热更新。";
+                    if (!web.message.isEmpty()) message += "\n\n" + web.message;
+                    show(new AlertDialog.Builder(activity).setTitle("发现线上热更新")
+                            .setMessage(message).setNegativeButton("稍后", null)
+                            .setPositiveButton("立即在线更新", (d, which) -> prepareWeb(web)));
+                } else {
+                    String sha = currentWebSha();
+                    String tail = sha.length() >= 7 ? "（资源 " + sha.substring(0, 7) + "）" : "";
+                    show(new AlertDialog.Builder(activity).setTitle("已是最新版本")
+                            .setMessage("北环竞速 " + version + tail + "\n已开启 APK 与线上资源双通道在线更新。")
+                            .setNeutralButton("同步线上资源", (d, which) -> syncLatestWeb())
+                            .setPositiveButton("完成", null));
                 }
             });
         }, e -> {
@@ -198,6 +253,62 @@ final class UpdateController {
             manualCheck = false;
             dismiss();
             showWhenVisible(() -> error("暂时查不到新版本", e, () -> check(true)));
+        });
+    }
+
+    private void syncLatestWeb() {
+        show(new AlertDialog.Builder(activity).setTitle("同步线上资源")
+                .setMessage("正在连接 GitHub 获取最新版本…").setOnCancelListener(ignored -> cancel())
+                .setNegativeButton("取消", (d, which) -> cancel()));
+        run(() -> ReleaseSource.checkWeb(null), web -> {
+            dismiss();
+            if (web == null) {
+                show(new AlertDialog.Builder(activity).setTitle("同步失败")
+                        .setMessage("未获取到线上版本信息，请稍后再试。").setPositiveButton("知道了", null));
+            } else {
+                prepareWeb(web);
+            }
+        }, e -> {
+            dismiss();
+            showWhenVisible(() -> error("无法连接线上服务", e, this::syncLatestWeb));
+        });
+    }
+
+    private void prepareWeb(ReleaseSource.WebUpdate web) {
+        ProgressBar progress = new ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal);
+        progress.setMax(100);
+        show(new AlertDialog.Builder(activity).setTitle("在线更新资源 " + web.shortSha)
+                .setMessage("正在下载最新游戏资源…").setView(progress)
+                .setOnCancelListener(ignored -> cancel())
+                .setNegativeButton("取消", (d, which) -> cancel()));
+        final int[] shown = {-1};
+        final int token = generation + 1;
+        run(() -> ReleaseSource.downloadWeb(app, web, (received, total) -> {
+            int percent = total > 0 ? (int) Math.min(100, 100L * received / total) : 0;
+            if (percent == shown[0]) return;
+            shown[0] = percent;
+            activity.runOnUiThread(() -> {
+                if (token == generation && !destroyed) {
+                    progress.setProgress(percent);
+                    if (dialog != null) dialog.setMessage(percent < 100
+                            ? "已下载 " + percent + "%  ·  " + fileSize(received) : "正在校验并应用资源…");
+                }
+            });
+        }), file -> {
+            dismiss();
+            preferences.edit()
+                    .putString("web-sha", web.sha)
+                    .putString("web-app-version", version)
+                    .putString("available", "")
+                    .apply();
+            publishVersion();
+            game.loadUrl(RaceActivity.GAME);
+            showWhenVisible(() -> show(new AlertDialog.Builder(activity).setTitle("在线更新完成")
+                    .setMessage("已成功更新到最新线上版本（" + web.shortSha + "），原有车型与成绩均已保留。")
+                    .setPositiveButton("开始游戏", null)));
+        }, e -> {
+            dismiss();
+            showWhenVisible(() -> error("在线更新未完成", e, () -> prepareWeb(web)));
         });
     }
 
@@ -228,7 +339,6 @@ final class UpdateController {
         }), file -> {
             dismiss();
             if (!foreground) {
-                // Android may evict the staged file while the game is in the background.
                 onReturn = () -> prepare(release);
             } else if (app.getPackageManager().canRequestPackageInstalls()) {
                 install(release, file);
@@ -263,7 +373,6 @@ final class UpdateController {
         Intent intent = new Intent(Intent.ACTION_VIEW);
         intent.setDataAndType(uri, UpdateFileProvider.MIME);
         intent.setClipData(ClipData.newRawUri("游戏更新", uri));
-        // Updating replaces this process. Keep the installer off the game's task stack.
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
         try {
             activity.startActivity(intent);

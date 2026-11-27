@@ -16,7 +16,10 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 
 public final class RaceActivity extends Activity {
     static final String GAME = "https://appassets.androidplatform.net/game/index.html";
@@ -68,7 +71,7 @@ public final class RaceActivity extends Activity {
             @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 if (GAME.equals(request.getUrl().toString())) {
                     try {
-                        return new WebResourceResponse("text/html", "utf-8", getAssets().open("index.html"));
+                        return new WebResourceResponse("text/html", "utf-8", openGameHtml());
                     } catch (IOException e) { throw new IllegalStateException(e); }
                 }
                 // The model, sounds and textures are embedded. Let Chromium handle blob/data URLs.
@@ -92,6 +95,16 @@ public final class RaceActivity extends Activity {
         });
         setContentView(game);
         game.loadUrl(GAME);
+    }
+
+    private InputStream openGameHtml() throws IOException {
+        File ota = updates == null ? null : updates.activeWebBundle();
+        if (ota != null && ota.isFile()) {
+            try {
+                return new FileInputStream(ota);
+            } catch (IOException ignored) { }
+        }
+        return getAssets().open("index.html");
     }
 
     @Override public void onWindowFocusChanged(boolean focused) {
