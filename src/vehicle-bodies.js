@@ -484,10 +484,11 @@ function addGT(body,bodyPaint,wheels){
  const roofFinish=new T.MeshStandardMaterial({color:0x121618,metalness:.07,roughness:.54,envMapIntensity:.35,side:T.DoubleSide});
  addParts(body,roofFinish,hatch.roof);addParts(body,paint,hatch.lip);
  addParts(body,carbon,dark.filter(Boolean));gtDiffuser(body,probe);
+ return paint;
 }
 export function sedanVariant(id,template,basePaint,baseTail,baseWindows){
  const object=template.clone(true),body=object.getObjectByName('Suspended body'),wheel=object.getObjectByName('Cabin wheel');
- const paint=basePaint.clone(),tail=baseTail.clone(),windows=[],windowCopies=new Map();
+ const paint=basePaint.clone(),tail=baseTail.clone(),windows=[],windowCopies=new Map(),paints=[paint];
  paint.color.set(VEHICLES[id].color);
  object.traverse(m=>{
    if(!m.isMesh)return;
@@ -513,7 +514,7 @@ export function sedanVariant(id,template,basePaint,baseTail,baseWindows){
      hub.position.x*=1.037;hub.position.y*=1.065;hub.scale.set(1.035,1.065,1.065);
      rimCover(hub,spin,id);
    }
-   addGT(body,paint,wheelPivots);
+   paints.push(addGT(body,paint,wheelPivots));
    body.add(lightGuide);
  }else if(id==='ultra'){
    object.updateMatrixWorld(true);addUltra(body);
@@ -522,5 +523,5 @@ export function sedanVariant(id,template,basePaint,baseTail,baseWindows){
    for(const {hub,spin} of wheelPivots)rimCover(hub,spin,id);
  }
  rearBadge(body,id);probeCache.delete(body);
- return {object,body,handwheel:wheel,windows,wheelPivots,tail,updateMedia};
+ return {object,body,handwheel:wheel,windows,wheelPivots,tail,updateMedia,paints};
 }

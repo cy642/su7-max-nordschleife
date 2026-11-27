@@ -435,7 +435,7 @@ export function createVisionGT(){
 
   }
   drive(0,0,false,0);
-  return {object,drive,cockpitEye:()=>seatEye,hoodEye:()=>hoodEye,rearEye:()=>rearEye,
+  return {object,drive,paints:[paint],cockpitEye:()=>seatEye,hoodEye:()=>hoodEye,rearEye:()=>rearEye,
     cockpit(enabled){
       glassParts.visible=!enabled;liner.visible=enabled;
       cabin.visible=enabled;throughGlass.visible=!enabled;

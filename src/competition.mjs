@@ -97,5 +97,5 @@ export function competitionRecordGroup(eventType, difficulty) {
     // Before difficulty selection these two events used the solo record slot.
     return difficulty === 'sport' ? 'solo' : difficulty;
   }
-  return ['race','elimination','pursuit','racingline'].includes(eventType) ? difficulty : 'solo';
+  return ['race','elimination','pursuit','racingline','drift'].includes(eventType) ? difficulty : 'solo';
 }

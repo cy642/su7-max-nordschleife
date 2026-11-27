@@ -1,7 +1,8 @@
-const DAILY_ROUTES = ['nord', 'duku', 'subsea', 'canyon', 'harbor'];
+const DAILY_ROUTES = ['nord', 'duku', 'subsea', 'canyon', 'harbor', 'fuji', 'sakura', 'cyber', 'volcano'];
 const DAILY_VEHICLES = ['su7', 'max', 'yu7gt', 'ultra', 'visiongt'];
-const DAILY_EVENTS = ['race', 'pursuit', 'elimination', 'racingline', 'checkpoint', 'speedtrap'];
+const DAILY_EVENTS = ['race', 'pursuit', 'elimination', 'racingline', 'checkpoint', 'speedtrap', 'drift'];
 const DAILY_DIFFICULTIES = ['sport', 'sport', 'expert', 'expert', 'master'];
+const DAILY_WEATHERS = ['clear', 'clear', 'sunset', 'rain', 'fog'];
 
 function fnv1a(str) {
   let h = 0x811c9dc5;
@@ -38,6 +39,7 @@ export function dailyChallenge(dateKey) {
     vehicleId: pick(DAILY_VEHICLES),
     eventType: pick(DAILY_EVENTS),
     difficulty: pick(DAILY_DIFFICULTIES),
+    weather: pick(DAILY_WEATHERS),
     mode: 'sprint'
   };
 }

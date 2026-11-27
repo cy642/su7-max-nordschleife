@@ -2,11 +2,15 @@ package io.github.cy642.nordrun;
 
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
+import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 import android.view.View;
 import android.view.WindowManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
@@ -18,6 +22,17 @@ public final class RaceActivity extends Activity {
     static final String GAME = "https://appassets.androidplatform.net/game/index.html";
     private WebView game;
     private UpdateController updates;
+    private Vibrator vibrator;
+
+    private final class NativeBridge {
+        @JavascriptInterface public void vibrate(int ms) {
+            if (vibrator == null || !vibrator.hasVibrator()) return;
+            int clamped = Math.max(8, Math.min(120, ms));
+            try {
+                vibrator.vibrate(VibrationEffect.createOneShot(clamped, VibrationEffect.DEFAULT_AMPLITUDE));
+            } catch (RuntimeException ignored) { }
+        }
+    }
 
     private void immersive() {
         getWindow().getDecorView().setSystemUiVisibility(
@@ -40,8 +55,11 @@ public final class RaceActivity extends Activity {
         game.getSettings().setJavaScriptEnabled(true);
         game.getSettings().setDomStorageEnabled(true);
         game.getSettings().setUseWideViewPort(true);
+        game.getSettings().setMediaPlaybackRequiresUserGesture(false);
         game.getSettings().setAllowFileAccess(false);
         game.getSettings().setAllowContentAccess(false);
+        vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+        game.addJavascriptInterface(new NativeBridge(), "NordrunNative");
         updates = new UpdateController(this, game, state);
         game.setWebViewClient(new WebViewClient() {
             @Override public void onPageFinished(WebView view, String url) {

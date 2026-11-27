@@ -5,7 +5,7 @@ import {rivalProfile, rivalRoad} from '../src/competition.mjs';
 import {speedTraps, speedTrapTarget, checkpointPlan} from '../src/challenges.mjs';
 import {racingLinePlan} from '../src/club-events.mjs';
 
-const tours = ['duku','subsea','canyon','harbor'];
+const tours = ['duku','subsea','canyon','harbor','fuji','sakura','cyber','volcano'];
 
 test('tour circuits close smoothly, measure horizontal metres, and clear distant pieces of road', () => {
   try {

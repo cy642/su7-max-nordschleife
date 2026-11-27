@@ -6,7 +6,7 @@ import {ROUTES,selectTrack,sample} from '../src/track.mjs';
 
 test('tunnel shells leave room for the chase camera across curves, portals and both shoulders',()=>{
   const ray=new T.Raycaster(), origin=new T.Vector3(), direction=new T.Vector3();
-  for(const id of ['duku','subsea','canyon','harbor']){
+  for(const id of ['duku','subsea','canyon','harbor','fuji','sakura','cyber','volcano']){
     const route=selectTrack(id),scene=new T.Scene();
     buildRouteTunnels(scene,route,sample);scene.updateMatrixWorld(true);
     for(const tunnel of route.tunnels){

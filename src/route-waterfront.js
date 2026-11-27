@@ -1,30 +1,31 @@
 import * as T from 'three';
 import {canvasMap,makeSurface,random,roadside} from './landscape-mesh.js';
+import {getRouteTheme} from './route-themes.mjs';
 
-function addWater(scene,route,survey) {
-  const port=route.id==='harbor',b=survey.bounds,step=40,pad=820;
+function addWater(scene,route,survey,waterSpec) {
+  const subsea=waterSpec.mode==='subsea',b=survey.bounds,step=40,pad=860;
   const x0=b.minX-pad,z0=b.minZ-pad,nx=Math.ceil((b.maxX-x0+pad)/step)+1,nz=Math.ceil((b.maxZ-z0+pad)/step)+1;
   const pos=[],idx=[],uv=[];
   for(let j=0;j<nz;j++)for(let i=0;i<nx;i++){
     const x=x0+i*step,z=z0+j*step,o=j*nx+i;
     pos.push(x,-.22,z);uv.push(x/57,z/57);
     if(i+1===nx||j+1===nz)continue;
-    if(!port){
+    if(subsea){
       const {p,d}=survey.nearest(x+step*.5,z+step*.5);
       if(d<73&&p.s>=route.tunnels[0].start-15&&p.s<=route.tunnels.at(-1).end+15&&p.y<2&&p.y>-15)continue;
     }
     idx.push(o,o+nx,o+1,o+1,o+nx,o+nx+1);
   }
   const map=canvasMap(256,256,(c,w,h)=>{
-    const rng=random(1143);c.fillStyle=port?'#314e61':'#51989e';c.fillRect(0,0,w,h);
+    const rng=random(1143);c.fillStyle=waterSpec.base;c.fillRect(0,0,w,h);
     for(let i=0;i<3300;i++){
       const x=rng()*w,y=rng()*h,length=2+14*rng(),curve=(rng()-.5)*4;
-      c.strokeStyle=rng()>.52?(port?'rgba(166,206,212,.18)':'rgba(223,241,221,.18)'):'rgba(9,52,70,.19)';
+      c.strokeStyle=rng()>.52?waterSpec.waveA:waterSpec.waveB;
       c.lineWidth=.5+rng();c.beginPath();c.moveTo(x,y);c.quadraticCurveTo(x+length*.4,y+curve,x+length,y+1);c.stroke();
     }
   });
   map.wrapS=map.wrapT=T.RepeatWrapping;map.anisotropy=2;
-  makeSurface(scene,pos,idx,new T.MeshLambertMaterial({map,color:port?0x75889e:0xe5f0ef}),null,uv);
+  makeSurface(scene,pos,idx,new T.MeshLambertMaterial({map,color:waterSpec.tint}),null,uv);
 }
 
 function ship(kit,x,z,yaw,length,night){
@@ -41,6 +42,14 @@ function ship(kit,x,z,yaw,length,night){
     part((col-.5)*length*.072,4.9+h/2,(row-3.1)*length*.104,length*.068,h,length*.099,colors[(row+col*3)%colors.length]);
   }
 }
+
+function sailboat(kit,x,z,yaw){
+  const sail=new T.ConeGeometry(.5,1,3);
+  kit.add(x,.6,z,2.4,1.2,7.5,0xf4f7f8,yaw);
+  kit.add(x,6.2,z,.24,10.5,.24,0x8a9aa0,yaw);
+  kit.add(x,6.2,z,4.8,9.2,.25,0xffffff,yaw,sail);
+}
+
 function beacon(kit,x,z,height=27){
   const round=new T.CylinderGeometry(.43,.56,1,14),roof=new T.ConeGeometry(.5,1,14);
   kit.add(x,1,z,12,3,12,0x85929a,0,round);
@@ -74,12 +83,74 @@ function dockCrane(kit,x,z,yaw,scale){
   const lamp=coord(0,47,-4);kit.add(...lamp,1.1,1.4,1.1,0xff6651,0,kit.cube,kit.glow);
 }
 
-export function buildWaterfront(scene,route,sample,survey,kit) {
-  addWater(scene,route,survey);
-  const harbor=route.id==='harbor',rand=random(harbor?735:215);
+function buildCyberCity(route,sample,survey,kit){
+  const rand=random(2077);
+  const windows=canvasMap(128,256,(c,w,h)=>{
+    const rng=random(909);c.fillStyle='#13162b';c.fillRect(0,0,w,h);
+    for(let j=0;j<28;j++)for(let i=0;i<10;i++){
+      const lit=rng();
+      c.fillStyle=lit>.88?'#6df7ff':lit>.76?'#ff66e5':lit>.64?'#b79dff':lit>.48?'#3b4675':'#1b213b';
+      c.fillRect(i*w/10+2,j*h/28+2,w/10-4,h/28-4);
+    }
+  });
+  const facade=new T.MeshBasicMaterial({map:windows,color:0xdfe4ff});
   const {minX,maxX,minZ,maxZ}=survey.bounds;
-  if(!harbor){
-    // Open segments follow a narrow breakwater island; the drive then disappears beneath the bay.
+  const cx=(minX+maxX)*.5,cz=(minZ+maxZ)*.5,farX=(maxX-minX)*.5,farZ=(maxZ-minZ)*.5;
+  const neons=[0x58f8ff,0xff56e0,0xa878ff,0xffb75e];
+  // Outer skyline ring
+  for(let i=0;i<165;i++){
+    const a=i/165*Math.PI*2,radius=.96+.28*rand();
+    const x=cx+Math.cos(a)*(farX+115)*radius,z=cz+Math.sin(a)*(farZ+120)*radius;
+    if(survey.nearest(x,z).d<52)continue;
+    const h=35+125*rand()**1.5+42*(.5+.5*Math.cos(a*5)),w=14+rand()*24,d=16+rand()*24;
+    const neon=neons[i%neons.length];
+    kit.add(x,h/2-.5,z,w,h,d,0x252a48,0,kit.cube,facade);
+    kit.add(x,h+.6,z,w*.95,1.2,d*.95,neon,0,kit.cube,kit.glow);
+    if(h>110){
+      kit.add(x,h+8,z,1.2,16,1.2,0x6a72a8);
+      kit.add(x,h+16.5,z,1.1,1.6,1.1,neon,0,kit.cube,kit.glow);
+    }
+  }
+  // Closer urban towers & glowing cyber portals flanking the expressway
+  for(let s=60;s<route.length;s+=135){
+    if(route.tunnels.some(t=>s>=t.start-25&&s<=t.end+25))continue;
+    const p=sample(s),yaw=Math.atan2(p.tx,p.tz);
+    const side=(Math.floor(s/135)%2?1:-1);
+    const [x,,z]=roadside(p,side*(46+rand()*36));
+    if(survey.nearest(x,z).d<38)continue;
+    const h=42+rand()*96,w=14+rand()*18,d=14+rand()*18,neon=neons[Math.floor(s)%neons.length];
+    kit.add(x,h/2,z,w,h,d,0x2a2f52,yaw,kit.cube,facade);
+    kit.add(x,h*.72,z,w+1.2,1.6,d+1.2,neon,yaw,kit.cube,kit.glow);
+    kit.add(x,h+.6,z,w*.8,1.1,d*.8,neon,yaw,kit.cube,kit.glow);
+  }
+  // Overhead neon speed arches along open expressway stretches
+  for(let s=260;s<route.length-200;s+=420){
+    if(route.tunnels.some(t=>s>=t.start-35&&s<=t.end+35))continue;
+    const p=sample(s),yaw=Math.atan2(p.tx,p.tz),neon=s%840===260?0x58f8ff:0xf25cff;
+    for(const side of [-1,1])kit.beam(roadside(p,side*10.4,-.4),roadside(p,side*10.4,11.2),.55,.55,0x373c5e);
+    kit.beam(roadside(p,-10.6,11.2),roadside(p,10.6,11.2),.7,.55,0x282d49);
+    kit.beam(roadside(p,-10.2,10.7),roadside(p,10.2,10.7),.22,.28,neon,kit.glow);
+  }
+}
+
+export function buildWaterfront(scene,route,sample,survey,kit) {
+  const theme=getRouteTheme(route.id),waterSpec=theme.water;
+  addWater(scene,route,survey,waterSpec);
+  const mode=waterSpec.mode,rand=random(mode==='harbor'?735:215);
+  const {minX,maxX,minZ,maxZ}=survey.bounds;
+  if(mode==='cyber'){buildCyberCity(route,sample,survey,kit);return;}
+  if(mode==='coast'){
+    const p=sample(1760),light=roadside(p,46);
+    if(survey.nearest(light[0],light[2]).d>26)beacon(kit,light[0],light[2],26);
+    for(let i=0;i<14;i++){
+      const a=i*Math.PI*2/14,x=(minX+maxX)*.5+Math.cos(a)*(maxX-minX+420)*.58,z=(minZ+maxZ)*.5+Math.sin(a)*(maxZ-minZ+420)*.58;
+      if(survey.nearest(x,z).d<75)continue;
+      sailboat(kit,x,z,rand()*6.28);
+    }
+    ship(kit,maxX+185,minZ+240,.35,105,false);
+    return;
+  }
+  if(mode==='subsea'){
     const p=sample(39),light=roadside(p,-45);beacon(kit,light[0],light[2],24);
     kit.add(light[0],.4,light[2],33,2,28,0x829695);
     kit.add(light[0]+8,3.5,light[2]+8,9,5.5,11,0xe6dfc8);
@@ -101,6 +172,7 @@ export function buildWaterfront(scene,route,sample,survey,kit) {
     }
     return;
   }
+  // Harbor skyline, container yards and cranes
   const windows=canvasMap(128,256,(c,w,h)=>{
     const rng=random(781);c.fillStyle='#252e40';c.fillRect(0,0,w,h);
     for(let j=0;j<24;j++)for(let i=0;i<12;i++){

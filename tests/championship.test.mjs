@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {CHAMPIONSHIP_ROUNDS, POINTS, PLAYER, newChampionship, scoreRound, standings, isComplete, parseChampionship} from '../src/championship.mjs';
+import {CHAMPIONSHIP_ROUNDS, GRAND_TOUR_ROUNDS, getCupRounds, POINTS, PLAYER, newChampionship, scoreRound, standings, isComplete, parseChampionship} from '../src/championship.mjs';
 
 test('championship scores rounds immutably, ranks standings, and marks completion', () => {
   const names = ['A', 'B', 'C', 'D', 'E'];
@@ -28,6 +28,15 @@ test('championship scores rounds immutably, ranks standings, and marks completio
   }
   assert.equal(isComplete(season), true);
   assert.equal(standings(season)[0].name, PLAYER);
+
+  let grand = newChampionship('expert', 'ultra', names, 'grand');
+  assert.equal(getCupRounds(grand).length, 9);
+  assert.equal(GRAND_TOUR_ROUNDS.length, 9);
+  for (let r = 0; r < 9; r++) {
+    assert.equal(isComplete(grand), false);
+    grand = scoreRound(grand, [PLAYER, 'A', 'B', 'C', 'D', 'E']);
+  }
+  assert.equal(isComplete(grand), true);
 });
 
 test('parseChampionship rejects malformed inputs without throwing', () => {

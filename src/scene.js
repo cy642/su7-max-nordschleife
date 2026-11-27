@@ -199,7 +199,7 @@ export async function carModel(base64){
  const root=new T.Group(),models=new Map();
  // Clone from a neutral pose even if another car is selected mid-session.
  const template=geometryGroup.clone(true);
- const max={object:geometryGroup,body,handwheel,windows,wheelPivots,tail};
+ const max={object:geometryGroup,body,handwheel,windows,wheelPivots,tail,paints:[paint]};
  let active=max;models.set('max',max);root.add(geometryGroup);
  const sedanSeat=V(.36,1.185,.27),suvSeat=V(.36,1.30,.115);
  const sedanHood=V(0,1.18,1.02),suvHood=V(0,1.31,1.07);
@@ -211,7 +211,11 @@ export async function carModel(base64){
    root.remove(active.object);active=models.get(id);selected=id;root.add(active.object);
    lastReadout=null;
  }
- return {object:root,makeOpponent,makeDistant,setVehicle,
+ function setPaint(hex){
+   if(!active.paints||!hex)return;
+   for(const m of active.paints)m.color.set(hex);
+ }
+ return {object:root,makeOpponent,makeDistant,setVehicle,setPaint,
    cockpitEye:()=>selected==='visiongt'?active.cockpitEye():selected==='yu7gt'?suvSeat:sedanSeat,
    hoodEye:()=>selected==='visiongt'?active.hoodEye():selected==='yu7gt'?suvHood:sedanHood,
    rearEye:()=>selected==='visiongt'?active.rearEye():selected==='yu7gt'?suvBack:sedanBack,

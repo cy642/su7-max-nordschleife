@@ -43,21 +43,27 @@ export function createTestDriveControls(carRoot) {
     panel.append(b);return b;
   }
   const lampButton = button('近光灯'), hornButton = button('鸣笛');
-  let active = false, enabled = false, audible = false, unavailable = false;
+  let active = false, enabled = false, raceBeam = false, audible = false, unavailable = false;
   let soundEnabled = () => false;
   let audio, hornGain, revision = 0, pending = false;
 
   function sync() {
     if (hiddenHost) hiddenHost.hidden=!active;
     panel.style.display = active?'inline-flex':'none';
-    lights.visible = active && enabled;
-    lampButton.textContent = '近光 · '+(enabled?'开':'关');
-    lampButton.setAttribute('aria-pressed',String(enabled));
+    lights.visible = (active && enabled) || raceBeam;
+    lampButton.textContent = '近光 · '+(lights.visible?'开':'关');
+    lampButton.setAttribute('aria-pressed',String(lights.visible));
     lampButton.title = '切换近光灯（L）';
     hornButton.disabled = !audible || unavailable;
     hornButton.textContent = !audible?'鸣笛 · 静音':unavailable?'鸣笛不可用':hornGain?'鸣笛中':'鸣笛';
     hornButton.title = audible?'短鸣一声（H）':'请先打开游戏声音';
   }
+  function setRaceBeam(on) {
+    raceBeam = Boolean(on);
+    enabled = raceBeam;
+    sync();
+  }
+  function getBeam() { return lights.visible; }
   function quiet() {
     revision++;
     pending = false;
@@ -119,7 +125,7 @@ export function createTestDriveControls(carRoot) {
     sync();
   }
   function reset() {
-    active=false;enabled=false;quiet();sync();
+    active=false;enabled=false;raceBeam=false;quiet();sync();
   }
   function bindPanel(container,readSound) {
     hiddenHost=container.hidden?container:null;
@@ -127,5 +133,5 @@ export function createTestDriveControls(carRoot) {
     soundEnabled=readSound;audible=Boolean(readSound());sync();
   }
   setVehicle('max');sync();
-  return {setVehicle, bindPanel, update, reset};
+  return {setVehicle, bindPanel, update, reset, setRaceBeam, getBeam};
 }

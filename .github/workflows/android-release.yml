@@ -1,0 +1,76 @@
+name: Build Android Release
+
+on:
+  push:
+    tags:
+      - 'android-v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'APK version name (e.g. 2.0.0)'
+        required: false
+        default: '2.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install Android SDK 35
+        run: |
+          yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Build and test web bundle
+        run: |
+          npm ci
+          node --test
+          npm run build
+
+      - name: Build APK
+        env:
+          NORDRUN_KEYSTORE_B64: ${{ secrets.NORDRUN_KEYSTORE_B64 }}
+          NORDRUN_KEY_PASSWORD: ${{ secrets.NORDRUN_KEY_PASSWORD }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#android-v}"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          fi
+          echo "APK_VERSION=${VERSION}" >> "$GITHUB_ENV"
+          if [ -n "${NORDRUN_KEYSTORE_B64}" ] && [ -n "${NORDRUN_KEY_PASSWORD}" ]; then
+            echo "${NORDRUN_KEYSTORE_B64}" | base64 -d > /tmp/nordrun.keystore
+            NORDRUN_KEYSTORE=/tmp/nordrun.keystore python3 android/build.py "Nordrun-${VERSION}.apk"
+            echo "SIGNED_RELEASE=true" >> "$GITHUB_ENV"
+          else
+            python3 android/build.py --debug "Nordrun-${VERSION}-debug.apk"
+            echo "SIGNED_RELEASE=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nordrun-apk-${{ env.APK_VERSION }}
+          path: Nordrun-*.apk
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/android-v') && env.SIGNED_RELEASE == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" "Nordrun-${APK_VERSION}.apk" \
+            --title "北环竞速 Android v${APK_VERSION}" \
+            --notes "2.0 大版本更新：全新 GT 展厅与赛道仪表 UI、重构地图引擎并新增秋名云海/碧海樱岬/霓虹都会/熔岩秘境 4 条赛道（共 9 条）、动态天气系统、漂移大师玩法与连击氮气充能、8 色车漆涂装与 4 档底盘调校、12 项车手成就、九城大满贯锦标赛、安卓原生震动反馈。" \
+            --latest

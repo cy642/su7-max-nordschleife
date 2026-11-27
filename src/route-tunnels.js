@@ -98,20 +98,22 @@ function mountainRing(s,canyon) {
 }
 const darkRock=[0x667072,0x687274,0x626d6e,0x606a6e];
 const redRock=[0x8a6050,0x916452,0x8a6353,0x865c4d];
+const lavaRock=[0x3a2b29,0x45312c,0x342728,0x4f352a];
 const snowRock=[0x696f75,0x798186,0x808889,0x686e72];
 const canyonWall=[0x9d6547,0xae7452,0x9e6a4f,0x926145];
+const lavaWall=[0x352a2b,0x4a3129,0x2d2426,0x5a3425];
 function rockSkin(faces,s,t,section,routeId) {
-  const canyon=routeId==='canyon';
+  const canyon=routeId==='canyon',lava=section.type==='lava',alpine=routeId==='duku';
   const rockyArch=station=>arch(station).map(([z,x,y],i)=>{
     const offset=.14*Math.sin(station*.26+i*.94)+.12*Math.cos(station*.38-i);
     return [z,x+Math.sign(x)*offset,y+offset*Math.max(0,y/10)];
   });
-  const a=rockyArch(s),b=rockyArch(t),outerA=mountainRing(s,canyon),outerB=mountainRing(t,canyon);
-  const palette=canyon?redRock:darkRock,high=canyon?canyonWall:snowRock;
+  const a=rockyArch(s),b=rockyArch(t),outerA=mountainRing(s,canyon||lava),outerB=mountainRing(t,canyon||lava);
+  const palette=lava?lavaRock:canyon?redRock:darkRock,high=lava?lavaWall:canyon?canyonWall:snowRock;
   for(let i=0;i<a.length-1;i++) {
     const j=Math.floor(noise(Math.round(s),i)*4);
     faces.quad(a[i],b[i],b[i+1],a[i+1],palette[j]);
-    const snow=!canyon&&profile[i][1]>7&&(i>=6&&i<=10||noise(s,i)>.28);
+    const snow=alpine&&profile[i][1]>7&&(i>=6&&i<=10||noise(s,i)>.28);
     faces.tri(outerA[i],outerB[i],outerB[i+1],snow?0xd4dce0:high[j]);
     faces.tri(outerA[i],outerB[i+1],outerA[i+1],snow?0xe3e7e5:high[(j+1)%4]);
   }
@@ -119,7 +121,7 @@ function rockSkin(faces,s,t,section,routeId) {
   for(const end of [section.start,section.end]) {
     if(s!==end&&t!==end)continue;
     const into=end===section.start?1:-1;
-    const inner=arch(end,liningWidth+.7,.6),outer=mountainRing(end,canyon);
+    const inner=arch(end,liningWidth+.7,.6),outer=mountainRing(end,canyon||lava);
     const middle=inner.map((p,i)=>{
       const q=outer[i],blend=.43+.095*Math.cos(i*1.63);
       return [end-into*(2.3+6.1*Math.cos(i*2.24)**2),p[1]+(q[1]-p[1])*blend,p[2]+(q[2]-p[2])*blend];
@@ -131,48 +133,50 @@ function rockSkin(faces,s,t,section,routeId) {
     }
   }
 }
-function concreteSkin(faces,s,t) {
+function concreteSkin(faces,s,t,neon=false) {
   const a=arch(s),b=arch(t);
   for(let i=0;i<a.length-1;i++){
     const height=(profile[i][1]+profile[i+1][1])/2;
-    const color=height<1.3?0x344854:height<3.7?0x779190:height<6.4?0x65777b:height<8.8?0x53636a:0x404d55;
+    const color=neon
+      ?(height<1.3?0x1f2238:height<3.7?0x2b2d4d:height<6.4?0x252745:height<8.8?0x1e213c:0x171a30)
+      :(height<1.3?0x344854:height<3.7?0x779190:height<6.4?0x65777b:height<8.8?0x53636a:0x404d55);
     faces.quad(a[i],b[i],b[i+1],a[i+1],color);
   }
 }
 function interiorDetails(faces,s,t,section,routeId) {
-  const glass=section.type==='glass',rock=section.type==='rock';
+  const glass=section.type==='glass',lava=section.type==='lava',rock=section.type==='rock'||lava,neon=section.type==='neon';
   for(const side of [-1,1]) {
     const wall=side*(liningWidth-(rock?.34:.055));
-    stripe(faces,s,t,side*10.97,-.12,0,glass?.87:1.22,glass?0x354e56:rock?0x666760:0x344855);
-    stripe(faces,s,t,side*10.97,glass?.75:1.1,side*.41,.02,0x829395);
-    stripe(faces,s,t,side*10.955,glass?.63:.88,0,.085,glass?0x86e9e0:rock?0xf1b35c:0x5dd8d4);
+    stripe(faces,s,t,side*10.97,-.12,0,glass?.87:1.22,glass?0x354e56:lava?0x412824:neon?0x212442:rock?0x666760:0x344855);
+    stripe(faces,s,t,side*10.97,glass?.75:1.1,side*.41,.02,neon?0x646ea8:0x829395);
+    stripe(faces,s,t,side*10.955,glass?.63:.88,0,.085,glass?0x86e9e0:lava?0xff6a24:neon?(side<0?0x5ef8ff:0xff5ce6):rock?0xf1b35c:0x5dd8d4);
     if(glass) {
       // Slender glazing beads and tinted highlights leave the panoramic side panels clear.
       stripe(faces,s,t,side*11.40,3.5,0,.037,0x88aaac);
       stripe(faces,s,t,side*9.92,6.72,-side*.03,.027,0x90b8b6);
     } else {
-      stripe(faces,s,t,wall,2.0,0,.13,rock?0x996d3f:0x327a86);
+      stripe(faces,s,t,wall,2.0,0,.13,lava?0xc94b1e:neon?0x8852ff:rock?0x996d3f:0x327a86);
       stripe(faces,s,t,side*7.96,7.84,side*.22,.04,0x3a4143);
     }
   }
-  const spacing=glass?16:rock?21:15;
+  const spacing=glass?16:neon?14:rock?21:15;
   for(let station=section.start+spacing/2+Math.ceil((s-section.start-spacing/2)/spacing)*spacing;station<t;station+=spacing){
     if(station<s||station+2>section.end) continue;
     const index=Math.round((station-section.start-spacing/2)/spacing);
-    if(glass||index%2===0)rib(faces,station,glass?.32:.28,glass?.18:.13,glass?0x668992:0x39434a,glass?0xa7c0bb:0x5a666a);
+    if(glass||neon||index%2===0)rib(faces,station,glass?.32:.28,glass?.18:.13,glass?0x668992:neon?0x3b356e:0x39434a,glass?0xa7c0bb:neon?(index%2?0x62f8ff:0xf25cff):0x5a666a);
     for(const side of [-1,1]){
       const x=side*10.94;
-      stripe(faces,station,station+.37,x,.56,0,.17,side<0?0xf3bf69:0xbaf2e8);
+      stripe(faces,station,station+.37,x,.56,0,.17,lava?0xff8c3d:neon?(side<0?0x58f8ff:0xff66e8):side<0?0xf3bf69:0xbaf2e8);
       if(glass) {
         stripe(faces,station+.25,station+.54,side*11.13,1.12,0,1.4,0xb4e6d6);
       } else {
         const outer=side*7.84;
-        stripe(faces,station,station+4.0,outer,7.91,side*.46,-.34,rock?0x8c8564:0x89a3a8);
-        stripe(faces,station+.15,station+3.85,outer+.06*side,7.85,side*.32,-.23,rock?0xffe2a4:0xe0ffff);
+        stripe(faces,station,station+4.0,outer,7.91,side*.46,-.34,lava?0x854128:neon?0x534a8a:rock?0x8c8564:0x89a3a8);
+        stripe(faces,station+.15,station+3.85,outer+.06*side,7.85,side*.32,-.23,lava?0xffa459:neon?0x94fcff:rock?0xffe2a4:0xe0ffff);
         if(index%5===2) {
           const wall=side*11.26;
-          stripe(faces,station,station+2.5,wall,2.55,0,.72,0x24816c);
-          sleeve(faces,station+1.25,wall-.02*side,2.90,.52,side,0xe1efce);
+          stripe(faces,station,station+2.5,wall,2.55,0,.72,neon?0x46237a:0x24816c);
+          sleeve(faces,station+1.25,wall-.02*side,2.90,.52,side,neon?0x68f8ff:0xe1efce);
         }
       }
     }
@@ -377,14 +381,14 @@ function stoneMaterial(){
 }
 function buildBlock(group,sample,section,route,start,end,materials,externalStart,externalEnd){
   const shell=new Faces(sample),stone=new Faces(sample),water=new Faces(sample),life=new Faces(sample),glare=new Faces(sample);
-  const rock=section.type==='rock',glass=section.type==='glass';
+  const rock=section.type==='rock'||section.type==='lava',glass=section.type==='glass',neon=section.type==='neon';
   const count=Math.ceil((end-start)/6);
   for(let i=0;i<count;i++){
     const s=i===0?start:start+(end-start)*i/count;
     const t=i+1===count?end:start+(end-start)*(i+1)/count;
     if(rock)rockSkin(stone,s,t,section,route.id);
     else if(glass){waterSkin(water,s,t);glassFilms(glare,s,t);}
-    else concreteSkin(shell,s,t);
+    else concreteSkin(shell,s,t,neon);
     interiorDetails(shell,s,t,section,route.id);
   }
   if(glass)seaLife(life,water,glare,start,end,section);
@@ -406,7 +410,7 @@ export function buildRouteTunnels(scene,route,sample){
   const clock={value:0},hasWindows=sections.some(s=>s.type==='glass');
   const materials={
     solid:new T.MeshBasicMaterial({vertexColors:true,side:T.DoubleSide}),
-    stone:sections.some(s=>s.type==='rock')?stoneMaterial():null,
+    stone:sections.some(s=>s.type==='rock'||s.type==='lava')?stoneMaterial():null,
     water:hasWindows?waterSurfaceMaterial(clock):null,
     swimmers:hasWindows?swimmerMaterial(clock):null,
     glare:hasWindows?new T.MeshBasicMaterial({vertexColors:true,side:T.DoubleSide,transparent:true,opacity:.095,depthWrite:false}):null

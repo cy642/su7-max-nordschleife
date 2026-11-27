@@ -30,16 +30,19 @@ function updateSpeed(car, input, grade, shoulder, wing, vehicle, dt) {
   // Hold the standing start on a gradient until the driver commands movement.
   if (oldSpeed === 0 && !throttle) return 0;
   const setup = vehicle.physics;
+  const brakeScale = clamp(Number(input.brakeScale ?? 1), .5, 1.3);
+  const dragScale = clamp(Number(input.dragScale ?? 1), .7, 1.3);
+  const topScale = clamp(Number(input.topScale ?? 1), .85, 1.15);
   // More power for a rolling pass. Tyre-limited launch and the speed limiter still apply.
   const power = setup.specificPower * (input.boost && supportsBoost(vehicle.id) ? 1.24 : 1);
   const drive = Math.min(setup.launch, power / Math.max(1, oldSpeed));
   const regen = throttle || brake || handbrake ? 0 : 1.15 * smoothstep(0, 7, oldSpeed);
   const draft = clamp(Number(input.draft || 0), 0, 1);
-  const drag = (setup.drag + wing * .000075) * oldSpeed ** 2 * (1 - .38 * draft) + .14 + grade * 9.81;
-  const braking = Math.max(brake * mix(setup.brakes, 6.1, shoulder), handbrake * mix(7.6, 4.8, shoulder));
+  const drag = (setup.drag * dragScale + wing * .000075) * oldSpeed ** 2 * (1 - .38 * draft) + .14 + grade * 9.81;
+  const braking = Math.max(brake * mix(setup.brakes * brakeScale, 6.1 * brakeScale, shoulder), handbrake * mix(7.6 * brakeScale, 4.8 * brakeScale, shoulder));
   const acc = drive * throttle * (1 - shoulder * .33) - braking - regen - drag
     - shoulder * (1.6 + .0028 * oldSpeed ** 2);
-  return clamp(oldSpeed + dt * acc, 0, (vehicle.topSpeed - wing * 4) / 3.6);
+  return clamp(oldSpeed + dt * acc, 0, (vehicle.topSpeed * topScale - wing * 4) / 3.6);
 }
 
 // Distance along the road and speed are signed. Positive lane and heading turn right.
@@ -62,12 +65,14 @@ export function driveCar(car, input, grade, bend, wing, dt, pavedRunway=false) {
   car.steer = damp(car.steer, axis, steerRate, dt);
 
   const setup = vehicle.physics;
-  const grip = mix(setup.grip + (setup.aeroGrip + activeWing * 2.4) * (v / 74) ** 2, 5.45, shoulder);
+  const gripScale = clamp(Number(input.gripScale ?? 1), .6, 1.25);
+  const driftScale = clamp(Number(input.driftScale ?? 1), .8, 1.5);
+  const grip = mix((setup.grip + (setup.aeroGrip + activeWing * 2.4) * (v / 74) ** 2) * gripScale, 5.45, shoulder);
   const cornerGrip = grip * Math.sqrt(1 - .47 * Math.min(.98, Math.abs(acc) / 16) ** 2);
   // At walking pace the wheel angle sets the radius. At speed tyre grip caps yaw.
   const steeringGain = mix(1.82, 1.42, highSpeed) + .22 * roadResponse;
   const maxYaw = Math.sign(v) * Math.min(speed * .16, cornerGrip / Math.max(speed, 1) * steeringGain);
-  const pivot = 1 + handbrake * .36 * smoothstep(4, 16, speed);
+  const pivot = 1 + handbrake * .36 * driftScale * smoothstep(4, 16, speed);
   const previousHeading = car.h;
   car.yawRate = damp(car.yawRate, car.steer * maxYaw * pivot, (axis === 0 ? 21 : 15) + 13 * roadResponse, dt);
   const excess = clamp((Math.abs(bend) * v * v - cornerGrip) / grip, 0, 3.2);

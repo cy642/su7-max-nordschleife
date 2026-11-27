@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {localDateKey, dailyChallenge, nextStreak} from '../src/daily.mjs';
 import {ROUTES} from '../src/routes.mjs';
 import {VEHICLES} from '../src/vehicles.mjs';
+import {WEATHERS} from '../src/weather.mjs';
 
 test('dailyChallenge is deterministic, valid, and varies routes across 60 days', () => {
   const a = dailyChallenge('2026-11-27');
@@ -10,7 +11,7 @@ test('dailyChallenge is deterministic, valid, and varies routes across 60 days',
   assert.deepEqual(a, b);
   assert.equal(a.mode, 'sprint');
 
-  const validEvents = new Set(['race', 'pursuit', 'elimination', 'racingline', 'checkpoint', 'speedtrap']);
+  const validEvents = new Set(['race', 'pursuit', 'elimination', 'racingline', 'checkpoint', 'speedtrap', 'drift']);
   const validDiffs = new Set(['sport', 'expert', 'master']);
   const seenRoutes = new Set();
   for (let i = 0; i < 60; i++) {
@@ -21,9 +22,10 @@ test('dailyChallenge is deterministic, valid, and varies routes across 60 days',
     assert.ok(Object.hasOwn(VEHICLES, d.vehicleId), d.vehicleId);
     assert.ok(validEvents.has(d.eventType), d.eventType);
     assert.ok(validDiffs.has(d.difficulty), d.difficulty);
+    assert.ok(Object.hasOwn(WEATHERS, d.weather), d.weather);
     seenRoutes.add(d.route);
   }
-  assert.ok(seenRoutes.size >= 4);
+  assert.ok(seenRoutes.size >= 6);
 });
 
 test('nextStreak increments consecutively, preserves same-day, and resets after gaps', () => {

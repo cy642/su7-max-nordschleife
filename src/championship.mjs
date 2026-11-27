@@ -1,11 +1,16 @@
 export const CHAMPIONSHIP_ROUNDS = ['nord', 'duku', 'subsea', 'canyon', 'harbor'];
+export const GRAND_TOUR_ROUNDS = ['nord', 'duku', 'subsea', 'canyon', 'harbor', 'fuji', 'sakura', 'cyber', 'volcano'];
 export const POINTS = [10, 8, 6, 5, 4, 3];
 export const PLAYER = '你';
 
-export function newChampionship(difficulty, vehicleId, names) {
+export function getCupRounds(c) {
+  return c?.cup === 'grand' ? GRAND_TOUR_ROUNDS : CHAMPIONSHIP_ROUNDS;
+}
+
+export function newChampionship(difficulty, vehicleId, names, cup = 'classic') {
   const table = {[PLAYER]: 0};
   for (const name of names) table[name] = 0;
-  return {difficulty, vehicleId, round:0, table, finishes:[]};
+  return {difficulty, vehicleId, cup:cup === 'grand' ? 'grand' : 'classic', round:0, table, finishes:[]};
 }
 
 export function scoreRound(c, order) {
@@ -25,14 +30,15 @@ export function standings(c) {
 }
 
 export function isComplete(c) {
-  return c.round >= CHAMPIONSHIP_ROUNDS.length;
+  return c.round >= getCupRounds(c).length;
 }
 
 export function parseChampionship(json) {
   try {
     const obj = typeof json === 'string' ? JSON.parse(json) : json;
     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
-    if (!Number.isInteger(obj.round) || obj.round < 0 || obj.round > CHAMPIONSHIP_ROUNDS.length) return null;
+    const maxRounds = getCupRounds(obj).length;
+    if (!Number.isInteger(obj.round) || obj.round < 0 || obj.round > maxRounds) return null;
     if (!obj.table || typeof obj.table !== 'object' || Array.isArray(obj.table)) return null;
     if (!Object.values(obj.table).every(v => typeof v === 'number' && Number.isFinite(v))) return null;
     if (!Array.isArray(obj.finishes)) return null;
